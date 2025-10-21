@@ -1,147 +1,85 @@
-import math, time, threading, json, os
-from .config import load_settings
-from .utils import state_lock
+# src/sondealert/proximity.py
+import json
+import time
+from math import isfinite
+from .utils import state_lock, haversine, get_logger
+from .gps import gps_data
 
-# ----------------------------
-# Globale statusvariabelen
-# ----------------------------
-gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
-nearest, nearest_d_m = None, None
-in_range = []     # sondes binnen drempelafstand
-items = []        # alle sondes uit sondes.json
-settings = {}     # actuele instellingen
+logger = get_logger("proximity")
+
+SONDES_JSON = "data/sondes.json"
 
 
-# ----------------------------
-# Hulpfuncties
-# ----------------------------
-def deg2rad(d):
-    return d * math.pi / 180.0
-
-
-def haversine(lat1, lon1, lat2, lon2):
-    """Bereken afstand in meters tussen twee punten op aarde."""
-    R = 6371000.0
-    dLat = deg2rad(lat2 - lat1)
-    dLon = deg2rad(lon2 - lon1)
-    a = math.sin(dLat / 2) ** 2 + math.cos(deg2rad(lat1)) * math.cos(deg2rad(lat2)) * math.sin(dLon / 2) ** 2
-    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-    return R * c
-
-
-# ----------------------------
-# Laad sondes.json
-# ----------------------------
-def load_sonde_list():
-    """Lees de laatst bekende sondes uit data/sondes.json"""
-    path = os.path.join(os.path.dirname(__file__), "../../data/sondes.json")
+def load_sondes():
+    """Laad de bestaande sondelijst uit JSON."""
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            lijst = data.get("items", [])
-            print(f"[PROX] {len(lijst)} sondes geladen uit sondes.json")
-            return lijst
+        with open(SONDES_JSON, "r", encoding="utf-8") as f:
+            sondes = json.load(f)
+            logger.info("%d sondes geladen uit %s", len(sondes), Sondes_JSON)
+            return sondes
+    except FileNotFoundError:
+        logger.warning("Bestand %s niet gevonden — geen sondes geladen.", Sondes_JSON)
+        return []
     except Exception as e:
-        print(f"[PROX] Kon sondes.json niet laden: {e}")
+        logger.exception("Fout bij laden sondelijst: %s", e)
         return []
 
 
-# ----------------------------
-# Hoofd-thread: controleert sondes in de buurt
-# ----------------------------
-def nearest_loop():
-    """Continu controleren welke sondes binnen de ingestelde afstand vallen."""
-    global nearest, nearest_d_m, in_range, items
+def find_nearby_sondes(sondes, lat, lon, max_distance_km):
+    """Filtert sondes binnen de opgegeven afstand (km)."""
+    nearby = []
+    for s in sondes:
+        try:
+            if not isfinite(s.get("lat", 0)) or not isfinite(s.get("lon", 0)):
+                continue
+            dist = haversine(lat, lon, s["lat"], s["lon"])
+            if dist <= max_distance_km:
+                s["distance_km"] = round(dist, 2)
+                nearby.append(s)
+        except Exception as e:
+            logger.debug("Fout bij afstandsbepaling: %s", e)
+    return sorted(nearby, key=lambda x: x["distance_km"])
 
-    # Laad dataset bij start
-    items = load_sonde_list()
+
+def run(radius_m=15000):
+    """
+    Periodieke thread die kijkt welke sondes binnen bereik zijn.
+    Wordt gestart vanuit main.py.
+    """
+    radius_km = radius_m / 1000.0
+    logger.info("Afstandsbepaling gestart (radius %.1f km)", radius_km)
+
+    sondes = load_sondes()
+    last_check = 0
 
     while True:
-        with state_lock:
-            s = load_settings()
-            thr = float(s.get("NEAR_THRESHOLD_M", 10000))
-            have, glat, glon = gps_have, gps_lat, gps_lon
-            lst = list(items)
-
-        if not have:
-            print("[PROX] Geen GPS beschikbaar, wacht op positie...")
-            time.sleep(3)
-            continue
-
-        if not lst:
-            print("[PROX] Geen sondes geladen, controle slaat over.")
-            time.sleep(10)
-            continue
-
         try:
-            gevonden = []
-            dichtste, min_d = None, None
-
-            for it in lst:
-                try:
-                    lat, lon = float(it["lat"]), float(it["lon"])
-                    d = haversine(glat, glon, lat, lon)
-
-                    # Debug — toon eerste 10 dichtbij sondes
-                    if d < 100000:  # minder dan 100 km
-                        print(f"[DBG] {it['id']} afstand {d/1000:.2f} km")
-
-                    if d <= thr:
-                        gevonden.append({**it, "distance_m": d})
-                    if min_d is None or d < min_d:
-                        min_d, dichtste = d, it
-
-                except Exception as e:
-                    print(f"[ERR] Fout bij berekenen afstand voor {it.get('id')}: {e}")
-
             with state_lock:
-                in_range = sorted(gevonden, key=lambda x: x["distance_m"])
-                nearest = dichtste if min_d is not None else None
-                nearest_d_m = min_d
+                lat = gps_data.get("lat")
+                lon = gps_data.get("lon")
 
-            if in_range:
-                print(f"[PROX] {len(in_range)} sondes binnen {thr/1000:.1f} km, dichtste {min_d/1000:.2f} km.")
+            if lat and lon:
+                now = time.time()
+                # om de 3 s opnieuw berekenen
+                if now - last_check >= 3:
+                    last_check = now
+                    nearby = find_nearby_sondes(sondes, lat, lon, radius_km)
+
+                    if nearby:
+                        logger.info(
+                            "%d sondes binnen %.1f km, dichtste %.2f km (%s)",
+                            len(nearby),
+                            radius_km,
+                            nearby[0]["distance_km"],
+                            nearby[0]["name"],
+                        )
+                    else:
+                        logger.debug("Geen sondes binnen %.1f km", radius_km)
             else:
-                print(f"[PROX] Geen sondes binnen {thr/1000:.1f} km (dichtste {min_d/1000:.2f} km).")
+                logger.debug("Nog geen geldige GPS-positie.")
+
+            time.sleep(1)
 
         except Exception as e:
-            print("[ERR] Proximity-loop:", e)
-
-        time.sleep(2)
-
-
-# ----------------------------
-# GPS-updates vanuit gps.py
-# ----------------------------
-def update_gps(lat, lon):
-    """Wordt aangeroepen vanuit gps.py wanneer een nieuw NMEA-pakket binnenkomt."""
-    global gps_have, gps_lat, gps_lon, gps_last
-    with state_lock:
-        gps_have, gps_lat, gps_lon, gps_last = True, lat, lon, int(time.time())
-    print(f"[GPS→PROX] Nieuwe GPS-positie ontvangen: {lat:.5f}, {lon:.5f}")
-
-
-# ----------------------------
-# Huidige status
-# ----------------------------
-def get_status():
-    """Retourneer een snapshot van de huidige status."""
-    with state_lock:
-        return {
-            "gps_have": gps_have,
-            "gps_lat": gps_lat,
-            "gps_lon": gps_lon,
-            "nearest": nearest,
-            "distance_m": nearest_d_m,
-            "in_range": in_range
-        }
-
-
-# ----------------------------
-# Start de proximity-thread
-# ----------------------------
-def start_proximity(settings=None, gps_module=None):
-    """Start de proximity-thread als achtergrondproces."""
-    t = threading.Thread(target=nearest_loop, daemon=True)
-    t.start()
-    print("[PROX] Proximity-thread gestart.")
+            logger.exception("Fout in proximity-loop: %s", e)
+            time.sleep(2)
