@@ -1,69 +1,82 @@
-import socket, time, threading
-from .utils import state_lock
+# src/sondealert/gps.py
+import socket
+import threading
+import time
+from .utils import state_lock, get_logger
 
-# Globale GPS-statusvariabelen
-gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
+logger = get_logger("gps")
+
+# Gedeelde GPS-data (laatste positie)
+gps_data = {"lat": None, "lon": None, "last_update": 0}
 
 
-def nmea_to_decimal(nmea, hemi):
-    """Converteer NMEA-coördinaat naar decimale graden."""
-    if not nmea:
-        return None
+def parse_nmea(line: str):
+    """
+    Eenvoudige parser voor NMEA-zinnen (GPRMC of GPGGA).
+    Retourneert (lat, lon) of None als ongeldige zin.
+    """
     try:
-        raw = float(nmea)
-        deg, minutes = int(raw / 100), raw - int(raw / 100) * 100
-        dec = deg + minutes / 60.0
-        return -dec if hemi in ("S", "W") else dec
-    except Exception:
-        return None
+        if line.startswith("$GPRMC"):
+            parts = line.split(",")
+            if parts[3] and parts[5]:
+                lat = float(parts[3][:2]) + float(parts[3][2:]) / 60.0
+                lon = float(parts[5][:3]) + float(parts[5][3:]) / 60.0
+                if parts[4] == "S":
+                    lat *= -1
+                if parts[6] == "W":
+                    lon *= -1
+                return lat, lon
+
+        elif line.startswith("$GPGGA"):
+            parts = line.split(",")
+            if parts[2] and parts[4]:
+                lat = float(parts[2][:2]) + float(parts[2][2:]) / 60.0
+                lon = float(parts[4][:3]) + float(parts[4][3:]) / 60.0
+                if parts[3] == "S":
+                    lat *= -1
+                if parts[5] == "W":
+                    lon *= -1
+                return lat, lon
+    except Exception as e:
+        logger.debug("Parserfout: %s", e)
+
+    return None
 
 
-def start(settings: dict):
-    """Start een thread die luistert op UDP-poort voor GPS-data."""
-    port = int(settings.get("GPS_PORT", 5050))
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(("0.0.0.0", port))
-    s.settimeout(1.0)
-    print(f"[GPS] Luistert op UDP-poort {port}")
+def start_gps_listener(port: int = 5050):
+    """
+    Luistert op de opgegeven UDP-poort naar NMEA-gegevens en
+    werkt gps_data bij met de laatste bekende positie.
+    """
+    logger.info("Luistert op UDP-poort %d voor GPS-data", port)
 
-    def loop():
-        global gps_have, gps_lat, gps_lon, gps_last
-        while True:
-            try:
-                data, _ = s.recvfrom(2048)
-                parts = data.decode(errors="ignore").split(",")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", port))
+    sock.settimeout(5.0)
 
-                # RMC- en GGA-zinnen ondersteunen
-                if parts[0].endswith("RMC") and len(parts) >= 7:
-                    lat = nmea_to_decimal(parts[3], parts[4][:1])
-                    lon = nmea_to_decimal(parts[5], parts[6][:1])
-                elif parts[0].endswith("GGA") and len(parts) >= 6:
-                    lat = nmea_to_decimal(parts[2], parts[3][:1])
-                    lon = nmea_to_decimal(parts[4], parts[5][:1])
-                else:
-                    lat = lon = None
+    while True:
+        try:
+            data, addr = sock.recvfrom(1024)
+            line = data.decode("utf-8", errors="ignore").strip()
 
-                # Geldige coördinaten → bijwerken
-                if lat and lon:
-                    with state_lock:
-                        gps_lat, gps_lon, gps_have, gps_last = lat, lon, True, int(time.time())
-
-                    # --- Nieuw: geef positie direct door aan proximity ---
-                    try:
-                        from . import proximity
-                        proximity.update_gps(lat, lon)
-                    except Exception as e:
-                        print(f"[GPS] Kon positie niet doorgeven aan proximity: {e}")
-                    # ------------------------------------------------------
-
-            except socket.timeout:
-                pass
-            except Exception as e:
-                print(f"[GPS] Fout bij ontvangen: {e}")
-
-            # Na 15 seconden zonder update → GPS uit
-            if int(time.time()) - gps_last > 15:
+            pos = parse_nmea(line)
+            if pos:
+                lat, lon = pos
                 with state_lock:
-                    gps_have = False
+                    gps_data["lat"] = lat
+                    gps_data["lon"] = lon
+                    gps_data["last_update"] = time.time()
 
-    threading.Thread(target=loop, daemon=True).start()
+                logger.info("GPS-positie ontvangen: %.5f, %.5f", lat, lon)
+            else:
+                logger.debug("Ongeldige of incomplete NMEA-zin: %s", line[:40])
+
+        except socket.timeout:
+            now = time.time()
+            with state_lock:
+                if gps_data["last_update"] and now - gps_data["last_update"] > 15:
+                    logger.warning("Geen GPS-data ontvangen in 15 seconden.")
+            continue
+        except Exception as e:
+            logger.exception("Fout in GPS-listener: %s", e)
+            time.sleep(2)
