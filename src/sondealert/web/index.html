@@ -89,14 +89,6 @@ th, td {
   padding:6px 4px;
   border-bottom:1px solid rgba(255,255,255,0.1);
 }
-.badge {
-  display:inline-block;
-  padding:2px 8px;
-  border-radius:999px;
-  border:1px solid var(--accent);
-  color:var(--accent);
-  font-size:0.9em;
-}
 footer {
   text-align:center;
   padding:14px 0;
@@ -147,20 +139,31 @@ async function refreshData() {
     const s = await r.json();
     const gps = s.gps;
 
-    // GPS status
+    // GPS status text (green for OK, red for OFF)
     document.getElementById('gpsStatus').innerHTML = gps.have
       ? `<b style="color:#00c853;">GPS: OK</b> &nbsp; Position: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>`
       : `<b style="color:#ff5252;">GPS: OFF</b>`;
 
-
     if (!gps.have) return;
 
     const lat = gps.lat, lon = gps.lon;
+
+    // === Your position icon (black person silhouette) ===
+    const userIcon = L.icon({
+      iconUrl: "icons/person.png",   // place your icon in src/sondealert/web/icons/person.png
+      iconSize: [32, 32],
+      iconAnchor: [16, 32],
+      popupAnchor: [0, -32]
+    });
+
     if (!myMarker)
-      myMarker = L.marker([lat, lon]).addTo(map).bindPopup("Your position");
+      myMarker = L.marker([lat, lon], { icon: userIcon })
+        .addTo(map)
+        .bindPopup("Your position");
     else
       myMarker.setLatLng([lat, lon]);
 
+    // === List of sondes ===
     const list = s.in_range || [];
     const nearestDiv = document.getElementById('nearest');
     if (list.length === 0) {
@@ -180,29 +183,40 @@ async function refreshData() {
       </table>`;
     }
 
+    // Remove old markers
     sondeMarkers.forEach(m => map.removeLayer(m));
     sondeMarkers = [];
 
+    // Add sondes to map
     list.forEach(x => {
-      const d = x.distance_m;
-      const color = d < 5000 ? "red" : d < 10000 ? "orange" : "yellow";
-      const icon = L.divIcon({
-        className: "custom-marker",
-        html: `<div style="background:${color};width:16px;height:16px;border-radius:50%;border:2px solid white;"></div>`,
-        iconSize: [16,16]
+      let iconUrl;
+      if (x.status === "NEED ATTENTION") {
+        iconUrl = "https://cdn-icons-png.flaticon.com/512/860/860790.png"; // blue satellite
+      } else {
+        iconUrl = "https://cdn-icons-png.flaticon.com/512/860/860788.png"; // orange satellite
+      }
+
+      const icon = L.icon({
+        iconUrl: iconUrl,
+        iconSize: [30, 30],
+        iconAnchor: [15, 30],
+        popupAnchor: [0, -30]
       });
-      const m = L.marker([x.lat, x.lon], {icon})
+
+      const m = L.marker([x.lat, x.lon], { icon })
         .addTo(map)
-        .bindPopup(`<b>Sonde ${x.id}</b><br>${(d/1000).toFixed(2)} km<br>${parseInt(x.alt)} m<br>${x.place}`);
+        .bindPopup(`<b>Sonde ${x.id}</b><br>${(x.distance_m / 1000).toFixed(2)} km<br>${parseInt(x.alt)} m<br>${x.place}`);
       sondeMarkers.push(m);
     });
 
+    // Draw line to nearest
     const n = s.nearest, d = s.distance_m;
     if (line) line.remove();
     if (n && d) {
-      line = L.polyline([[lat, lon], [n.lat, n.lon]], {color:'red'}).addTo(map);
-      map.fitBounds([[lat, lon], [n.lat, n.lon]], {padding:[40,40]});
+      line = L.polyline([[lat, lon], [n.lat, n.lon]], { color: 'red' }).addTo(map);
+      map.fitBounds([[lat, lon], [n.lat, n.lon]], { padding: [40, 40] });
     }
+
   } catch (e) {
     console.error("update error", e);
   }
