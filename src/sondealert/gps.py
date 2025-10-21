@@ -17,7 +17,7 @@ def nmea_to_decimal(nmea, hemi):
         return None
 
 def start(settings):
-    """Start UDP listener voor NMEA (RMC/GGA) op opgegeven poort."""
+    """Luistert op UDP en verwerkt NMEA-data (RMC, GGA, GLL)."""
     port = int(settings.get("GPS_PORT", 5050))
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -30,28 +30,34 @@ def start(settings):
             try:
                 data, _ = s.recvfrom(4096)
                 line = data.decode(errors="ignore").strip()
-                # $GPRMC
-                # $GPGGA
+                if not line.startswith("$"):
+                    continue
+
                 parts = line.split(",")
+                lat = lon = None
+
+                # $GPRMC, $GPGGA -> reeds ondersteund
                 if line.startswith("$GPRMC") and len(parts) > 6:
-                    # lat, N/S, lon, E/W
                     lat = nmea_to_decimal(parts[3], parts[4][:1] if len(parts[4]) else "")
                     lon = nmea_to_decimal(parts[5], parts[6][:1] if len(parts[6]) else "")
                 elif line.startswith("$GPGGA") and len(parts) > 5:
                     lat = nmea_to_decimal(parts[2], parts[3][:1] if len(parts[3]) else "")
                     lon = nmea_to_decimal(parts[4], parts[5][:1] if len(parts[5]) else "")
-                else:
-                    lat = lon = None
+                # ✅ nieuw: $GNGLL (gebruikt door veel moderne GNSS-modules)
+                elif line.startswith("$GNGLL") and len(parts) > 5:
+                    lat = nmea_to_decimal(parts[1], parts[2][:1] if len(parts[2]) else "")
+                    lon = nmea_to_decimal(parts[3], parts[4][:1] if len(parts[4]) else "")
 
                 if lat is not None and lon is not None:
                     with state_lock:
                         gps_lat, gps_lon, gps_have, gps_last = lat, lon, True, int(time.time())
+                    print(f"[GPS] Positie ontvangen: {lat:.5f}, {lon:.5f}")
             except socket.timeout:
                 pass
-            except Exception:
-                # bescherm tegen rare/gebroken NMEA regels
-                pass
+            except Exception as e:
+                print(f"[GPS] Fout: {e}")
 
+            # GPS verloren na 15 sec inactiviteit
             if int(time.time()) - gps_last > 15:
                 with state_lock:
                     gps_have = False
