@@ -7,7 +7,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # Installeer OS-pakketten die nodig zijn voor I²C en numerieke libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    i2c-tools python3-dev \
+    i2c-tools python3-dev build-essential gcc \
     && rm -rf /var/lib/apt/lists/*
 
 # Werkmap in de container
