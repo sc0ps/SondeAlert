@@ -1,82 +1,88 @@
-# src/sondealert/gps.py
 import socket
-import threading
 import time
-from .utils import state_lock, get_logger
+from .utils import get_logger
 
 logger = get_logger("gps")
 
-# Gedeelde GPS-data (laatste positie)
-gps_data = {"lat": None, "lon": None, "last_update": 0}
+# Globale data die door andere modules (webserver) wordt uitgelezen
+gps_data = {
+    "lat": None,
+    "lon": None,
+    "last_update": 0
+}
 
 
-def parse_nmea(line: str):
-    """
-    Eenvoudige parser voor NMEA-zinnen (GPRMC of GPGGA).
-    Retourneert (lat, lon) of None als ongeldige zin.
-    """
+def parse_nmea_gga(line: str):
+    """Parseer een $GPGGA of $GNGGA NMEA-zin en retourneer (lat, lon)."""
     try:
-        if line.startswith("$GPRMC"):
-            parts = line.split(",")
-            if parts[3] and parts[5]:
-                lat = float(parts[3][:2]) + float(parts[3][2:]) / 60.0
-                lon = float(parts[5][:3]) + float(parts[5][3:]) / 60.0
-                if parts[4] == "S":
-                    lat *= -1
-                if parts[6] == "W":
-                    lon *= -1
-                return lat, lon
+        parts = line.split(",")
+        if len(parts) < 6:
+            return None, None
 
-        elif line.startswith("$GPGGA"):
-            parts = line.split(",")
-            if parts[2] and parts[4]:
-                lat = float(parts[2][:2]) + float(parts[2][2:]) / 60.0
-                lon = float(parts[4][:3]) + float(parts[4][3:]) / 60.0
-                if parts[3] == "S":
-                    lat *= -1
-                if parts[5] == "W":
-                    lon *= -1
-                return lat, lon
+        lat_raw = parts[2]
+        lon_raw = parts[4]
+        if not lat_raw or not lon_raw:
+            return None, None
+
+        lat = float(lat_raw[:2]) + float(lat_raw[2:]) / 60
+        lon = float(lon_raw[:3]) + float(lon_raw[3:]) / 60
+
+        if parts[3] == "S":
+            lat = -lat
+        if parts[5] == "W":
+            lon = -lon
+
+        return lat, lon
     except Exception as e:
-        logger.debug("Parserfout: %s", e)
-
-    return None
+        logger.debug("Kon GGA-zin niet parsen: %s (%s)", line, e)
+        return None, None
 
 
 def start_gps_listener(port: int = 5050):
-    """
-    Luistert op de opgegeven UDP-poort naar NMEA-gegevens en
-    werkt gps_data bij met de laatste bekende positie.
-    """
-    logger.info("Luistert op UDP-poort %d voor GPS-data", port)
-
+    """Luistert naar UDP-NMEA zinnen en logt alles wat binnenkomt."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", port))
-    sock.settimeout(5.0)
+    logger.info("Luistert op UDP-poort %d voor GPS-data", port)
 
     while True:
         try:
             data, addr = sock.recvfrom(1024)
-            line = data.decode("utf-8", errors="ignore").strip()
+            line = data.decode(errors="ignore").strip()
+            if not line:
+                continue
 
-            pos = parse_nmea(line)
-            if pos:
-                lat, lon = pos
-                with state_lock:
+            # Debug: log elke ontvangen regel
+            logger.info("Ontvangen ruwe GPS-data van %s: %s", addr, line)
+
+            # Alleen GGA of RMC zinnen gebruiken voor positie
+            if line.startswith("$GPGGA") or line.startswith("$GNGGA"):
+                lat, lon = parse_nmea_gga(line)
+                if lat and lon:
                     gps_data["lat"] = lat
                     gps_data["lon"] = lon
                     gps_data["last_update"] = time.time()
+                    logger.info("GPS-positie ontvangen: %.5f, %.5f", lat, lon)
+            elif line.startswith("$GPRMC") or line.startswith("$GNRMC"):
+                # Optioneel: RMC-zin voor lat/lon
+                parts = line.split(",")
+                if len(parts) >= 7:
+                    try:
+                        lat_raw = parts[3]
+                        lon_raw = parts[5]
+                        if lat_raw and lon_raw:
+                            lat = float(lat_raw[:2]) + float(lat_raw[2:]) / 60
+                            lon = float(lon_raw[:3]) + float(lon_raw[3:]) / 60
+                            if parts[4] == "S":
+                                lat = -lat
+                            if parts[6] == "W":
+                                lon = -lon
+                            gps_data["lat"] = lat
+                            gps_data["lon"] = lon
+                            gps_data["last_update"] = time.time()
+                            logger.info("GPS-positie ontvangen (RMC): %.5f, %.5f", lat, lon)
+                    except Exception as e:
+                        logger.debug("Kon RMC-zin niet parsen: %s", e)
 
-                logger.info("GPS-positie ontvangen: %.5f, %.5f", lat, lon)
-            else:
-                logger.debug("Ongeldige of incomplete NMEA-zin: %s", line[:40])
-
-        except socket.timeout:
-            now = time.time()
-            with state_lock:
-                if gps_data["last_update"] and now - gps_data["last_update"] > 15:
-                    logger.warning("Geen GPS-data ontvangen in 15 seconden.")
-            continue
         except Exception as e:
-            logger.exception("Fout in GPS-listener: %s", e)
-            time.sleep(2)
+            logger.error("Fout bij lezen GPS-data: %s", e)
+            time.sleep(1)
