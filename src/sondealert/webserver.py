@@ -3,7 +3,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from .utils import state_lock
 from . import gps as gps_module
 from . import proximity as prox
-from .config import save_settings, load_settings, SETTINGS
+from .config import save_settings, load_settings
 
 
 class WebHandler(SimpleHTTPRequestHandler):
@@ -211,10 +211,9 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
                 save_settings(s)
 
-            # herlaad settings direct
+            # herlaad direct in actief geheugen (via proximity module)
             with state_lock:
-                SETTINGS.clear()
-                SETTINGS.update(load_settings())
+                prox.settings = load_settings()
 
             self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
         else:
