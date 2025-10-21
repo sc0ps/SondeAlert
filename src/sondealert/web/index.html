@@ -1,229 +1,59 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="nl">
 <head>
 <meta charset="utf-8" />
-<title>SondeAlert — Dashboard</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-:root {
-  --bg1:#0a2540;
-  --bg2:#001220;
-  --accent:#2ea8ff;
-  --accent-hover:#48b6ff;
-  --card:rgba(255,255,255,0.08);
-  --text:#ffffff;
-  --muted:#aab;
-}
-body {
-  margin:0;
-  font-family:"Segoe UI",Roboto,Arial,sans-serif;
-  background:linear-gradient(180deg,var(--bg1),var(--bg2));
-  color:var(--text);
-  display:flex;
-  flex-direction:column;
-  min-height:100vh;
-}
-header {
-  text-align:center;
-  padding:30px 0 10px;
-}
-h1 {
-  margin:0;
-  color:var(--accent);
-  font-size:2rem;
-  letter-spacing:0.5px;
-}
-.tabs {
-  display:flex;
-  justify-content:center;
-  gap:10px;
-  margin-top:10px;
-}
-.tab-btn {
-  border:none;
-  background:transparent;
-  color:var(--accent);
-  border:1px solid var(--accent);
-  padding:8px 16px;
-  border-radius:999px;
-  font-weight:600;
-  cursor:pointer;
-  transition:0.2s;
-}
-.tab-btn.active {
-  background:var(--accent);
-  color:#001220;
-}
-.tab-btn:hover {
-  background:var(--accent-hover);
-  color:#001220;
-}
-.container {
-  flex:1;
-  width:90%;
-  max-width:850px;
-  margin:0 auto;
-  padding-bottom:20px;
-}
-.card {
-  background:var(--card);
-  border-radius:14px;
-  box-shadow:0 0 15px rgba(0,0,0,0.3);
-  padding:20px;
-  margin-top:16px;
-}
-#map {
-  height:420px;
-  border-radius:10px;
-  margin-top:12px;
-}
-table {
-  width:100%;
-  border-collapse:collapse;
-  margin-top:8px;
-  font-size:0.95em;
-}
-th, td {
-  text-align:left;
-  padding:6px 4px;
-  border-bottom:1px solid rgba(255,255,255,0.1);
-}
-footer {
-  text-align:center;
-  padding:14px 0;
-  color:var(--muted);
-  font-size:0.9em;
-  border-top:1px solid rgba(255,255,255,0.1);
-}
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>SondeAlert · Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+<link rel="stylesheet" href="/static/style.css" />
 </head>
 <body>
-<header>
-  <h1>SondeAlert</h1>
-  <div class="tabs">
-    <button class="tab-btn active" onclick="window.location.href='/'">Dashboard</button>
-    <button class="tab-btn" onclick="window.location.href='/settings'">Settings</button>
-  </div>
+<header class="sa-header">
+<div class="container">
+<div class="brand">
+<svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 2v20M2 12h20" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+<span>SondeAlert</span>
+</div>
+<nav class="nav">
+<a class="btn btn-ghost" href="/settings">Instellingen</a>
+</nav>
+</div>
 </header>
 
-<div class="container">
-  <div class="card">
-    <div id="gpsStatus">GPS: loading...</div>
-  </div>
 
-  <div class="card">
-    <h3>Sondes within range</h3>
-    <div id="nearest">Loading...</div>
-    <div id="map"></div>
-  </div>
+<main class="container grid">
+<section class="card stretch">
+<div class="card-header">
+<h2>Live kaart</h2>
+<div class="meta" id="gpsStatus">GPS: —</div>
 </div>
+<div id="map" class="map"></div>
+<div class="legend">
+<span class="dot dot-me"></span> Jij
+<span class="dot dot-ok"></span> Sonde dichtbij
+<span class="dot dot-far"></span> Sonde verder weg
+</div>
+</section>
 
-<footer>
-  <p>© 2025 SondeAlert — Developed by Scops Owl Designs</p>
+
+<aside class="card">
+<div class="card-header">
+<h2>In de buurt</h2>
+<button class="btn btn-ghost" id="forceRefresh" title="Nu verversen">↻</button>
+</div>
+<div id="list" class="list"></div>
+</aside>
+</main>
+
+
+<footer class="container footnote">
+<div>
+<strong>Status:</strong> <span id="lastUpdate">—</span>
+</div>
 </footer>
 
-<script>
-let map = L.map('map').setView([52.1,5.2], 7);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 18
-}).addTo(map);
 
-let myMarker = null;
-let line = null;
-let sondeMarkers = [];
-
-async function refreshData() {
-  try {
-    const r = await fetch('/nearest.json?' + Date.now());
-    const s = await r.json();
-    const gps = s.gps;
-
-    // GPS status text (green for OK, red for OFF)
-    document.getElementById('gpsStatus').innerHTML = gps.have
-      ? `<b style="color:#00c853;">GPS: OK</b> &nbsp; Position: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>`
-      : `<b style="color:#ff5252;">GPS: OFF</b>`;
-
-    if (!gps.have) return;
-
-    const lat = gps.lat, lon = gps.lon;
-
-    // === Your position icon (black person silhouette) ===
-    const userIcon = L.icon({
-      iconUrl: "icons/person.png",   // place your icon in src/sondealert/web/icons/person.png
-      iconSize: [32, 32],
-      iconAnchor: [16, 32],
-      popupAnchor: [0, -32]
-    });
-
-    if (!myMarker)
-      myMarker = L.marker([lat, lon], { icon: userIcon })
-        .addTo(map)
-        .bindPopup("Your position");
-    else
-      myMarker.setLatLng([lat, lon]);
-
-    // === List of sondes ===
-    const list = s.in_range || [];
-    const nearestDiv = document.getElementById('nearest');
-    if (list.length === 0) {
-      nearestDiv.innerHTML = "No sondes within range.";
-    } else {
-      nearestDiv.innerHTML = `<table>
-        <tr><th>ID</th><th>Status</th><th>Distance</th><th>Altitude</th><th>Last frame</th><th>Launch site</th></tr>
-        ${list.map(x => `
-          <tr>
-            <td>${x.id}</td>
-            <td>${x.status}</td>
-            <td>${(x.distance_m / 1000).toFixed(2)} km</td>
-            <td>${parseInt(x.alt)} m</td>
-            <td>${x.last}</td>
-            <td>${x.place}</td>
-          </tr>`).join("")}
-      </table>`;
-    }
-
-    // Remove old markers
-    sondeMarkers.forEach(m => map.removeLayer(m));
-    sondeMarkers = [];
-
-    // Add sondes to map
-    list.forEach(x => {
-      let iconUrl;
-      if (x.status === "NEED ATTENTION") {
-        iconUrl = "https://cdn-icons-png.flaticon.com/512/860/860790.png"; // blue satellite
-      } else {
-        iconUrl = "https://cdn-icons-png.flaticon.com/512/860/860788.png"; // orange satellite
-      }
-
-      const icon = L.icon({
-        iconUrl: iconUrl,
-        iconSize: [30, 30],
-        iconAnchor: [15, 30],
-        popupAnchor: [0, -30]
-      });
-
-      const m = L.marker([x.lat, x.lon], { icon })
-        .addTo(map)
-        .bindPopup(`<b>Sonde ${x.id}</b><br>${(x.distance_m / 1000).toFixed(2)} km<br>${parseInt(x.alt)} m<br>${x.place}`);
-      sondeMarkers.push(m);
-    });
-
-    // Draw line to nearest
-    const n = s.nearest, d = s.distance_m;
-    if (line) line.remove();
-    if (n && d) {
-      line = L.polyline([[lat, lon], [n.lat, n.lon]], { color: 'red' }).addTo(map);
-      map.fitBounds([[lat, lon], [n.lat, n.lon]], { padding: [40, 40] });
-    }
-
-  } catch (e) {
-    console.error("update error", e);
-  }
-}
-
-setInterval(refreshData, 5000);
-refreshData();
-</script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script src="/static/app.js"></script>
 </body>
 </html>

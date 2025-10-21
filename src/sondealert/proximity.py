@@ -1,4 +1,7 @@
-import time, threading, math, json
+import time
+import threading
+import math
+import json
 from pathlib import Path
 from .gps import gps_have, gps_lat, gps_lon
 from .config import load_settings
@@ -15,7 +18,7 @@ def haversine(lat1, lon1, lat2, lon2):
     return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
 
 def start_proximity():
-    """Zoekt voortdurend naar dichtstbijzijnde sondes binnen ingestelde afstand"""
+    """Zoekt voortdurend naar dichtstbijzijnde sondes binnen ingestelde afstand."""
     settings = load_settings()
     threshold_m = float(settings.get("NEAR_THRESHOLD_M", 15000))
     data_file = Path("/app/data/sondes.json")
@@ -23,7 +26,7 @@ def start_proximity():
         print("[PROX] sondes.json niet gevonden.")
         return
 
-    with open(data_file, "r", encoding="utf-8") as f:
+    with data_file.open("r", encoding="utf-8") as f:
         data = json.load(f)
     all_sondes = data.get("items", [])
     print(f"[PROX] {len(all_sondes)} sondes geladen uit sondes.json")
@@ -31,24 +34,20 @@ def start_proximity():
     def loop():
         global nearest_sondes
         while True:
-            if not gps_have:
-                print("[PROX] Geen GPS beschikbaar, wacht...")
-                time.sleep(2)
-                continue
-
-            my_lat, my_lon = gps_lat, gps_lon
-            settings = load_settings()
-            threshold_m = float(settings.get("NEAR_THRESHOLD_M", 15000))
             near = []
-
-            for s in all_sondes:
-                d = haversine(my_lat, my_lon, s["lat"], s["lon"])
-                if d <= threshold_m:
-                    near.append({
-                        "id": s["id"], "status": s["status"], "dist_m": d,
-                        "alt": s["alt"], "last": s["last"],
-                        "place": s["place"], "lat": s["lat"], "lon": s["lon"]
-                    })
+            if gps_have:
+                my_lat, my_lon = gps_lat, gps_lon
+                for s in all_sondes:
+                    try:
+                        d = haversine(my_lat, my_lon, s["lat"], s["lon"])
+                        if d <= threshold_m:
+                            near.append({
+                                "id": s["id"], "status": s.get("status", ""),
+                                "dist_m": d, "alt": s.get("alt"), "last": s.get("last"),
+                                "place": s.get("place"), "lat": s["lat"], "lon": s["lon"]
+                            })
+                    except Exception:
+                        continue
 
             with nearest_lock:
                 nearest_sondes = sorted(near, key=lambda x: x["dist_m"])
