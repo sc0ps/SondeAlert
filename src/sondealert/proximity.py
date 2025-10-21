@@ -1,4 +1,4 @@
-import math, time, threading
+import math, time, threading, json, os
 from .config import load_settings
 from .utils import state_lock
 
@@ -6,7 +6,7 @@ from .utils import state_lock
 gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 nearest, nearest_d_m = None, None
 in_range = []     # lijst van sondes binnen drempelafstand
-items = []        # alle sondes uit radiosondy.py
+items = []        # alle sondes uit sondes.json
 settings = {}     # actuele instellingen
 
 
@@ -28,11 +28,30 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 # ----------------------------
+# Hulpfunctie: sondes.json inladen
+# ----------------------------
+def load_sonde_list():
+    """Lees de laatst bekende sondes uit data/sondes.json"""
+    path = os.path.join(os.path.dirname(__file__), "../../data/sondes.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            print(f"[PROX] {len(data.get('items', []))} sondes geladen uit sondes.json")
+            return data.get("items", [])
+    except Exception as e:
+        print(f"[PROX] Kon sondes.json niet laden: {e}")
+        return []
+
+
+# ----------------------------
 # Hoofd-thread: controleert sondes in de buurt
 # ----------------------------
 def nearest_loop():
     """Continu controleren welke sondes binnen de ingestelde afstand vallen."""
-    global nearest, nearest_d_m, in_range
+    global nearest, nearest_d_m, in_range, items
+
+    # bij start de dataset laden
+    items = load_sonde_list()
 
     while True:
         with state_lock:
