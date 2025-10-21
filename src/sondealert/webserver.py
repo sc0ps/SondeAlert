@@ -11,11 +11,10 @@ WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 class WebHandler(SimpleHTTPRequestHandler):
     def log_message(self, *a):
-        pass  # geen console spam in logs
+        pass  # geen console spam
 
-    # ----------------------------------------
+    # ----------------------------
     def _serve_file(self, filename, mime="text/html"):
-        """Laad en stuur een HTML-bestand uit /web"""
         path = os.path.join(WEB_DIR, filename)
         if not os.path.exists(path):
             self.send_error(404)
@@ -28,7 +27,7 @@ class WebHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    # ----------------------------------------
+    # ----------------------------
     def _ok_json(self, obj: dict):
         data = json.dumps(obj).encode()
         self.send_response(200)
@@ -37,7 +36,7 @@ class WebHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    # ----------------------------------------
+    # ----------------------------
     def do_GET(self):
         path = self.path.split("?")[0]
 
@@ -69,15 +68,16 @@ class WebHandler(SimpleHTTPRequestHandler):
             })
             return
 
-        # ---------- Alles anders ----------
+        # ---------- Onbekend pad ----------
         else:
             self.send_error(404)
 
-    # ----------------------------------------
+    # ----------------------------
     def do_POST(self):
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
-            data = urllib.parse.parse_qs(self.rfile.read(length).decode())
+            body = self.rfile.read(length).decode()
+            data = urllib.parse.parse_qs(body)
 
             with state_lock:
                 s = load_settings()
@@ -102,17 +102,18 @@ class WebHandler(SimpleHTTPRequestHandler):
                     ]
 
                 save_settings(s)
+                print("[SETTINGS] Bestand opgeslagen:", json.dumps(s, indent=2))
 
-            # herlaad direct in actief geheugen
-            with state_lock:
+                # direct opnieuw in geheugen laden
                 prox.settings = load_settings()
+                print("[SETTINGS] Geheugenwaarden vernieuwd")
 
             self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
         else:
             self.send_error(404)
 
 
-# ----------------------------------------
+# ----------------------------
 def start(settings: dict):
     """Start de ingebouwde webserver"""
     bind_host = settings.get("BIND_HOST", "0.0.0.0")
