@@ -19,7 +19,7 @@ venv/
 .idea/
 
 # --- Docker data & cache ---
-data/
+data/*
 !data/.gitkeep
 *.pid
 *.sock
