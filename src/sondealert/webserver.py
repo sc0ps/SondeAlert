@@ -131,54 +131,58 @@ refreshData();
             with state_lock:
                 s = load_settings()
 
-            launch_filters_text = "\n".join(s.get("LAUNCH_FILTERS", ["DE BILT (NL)", "DE BILT"]))
-            status_keep_text = ",".join(s.get("STATUS_KEEP", ["UNKNOWN", "NEED ATTENTION"]))
-
-            html = f"""<!DOCTYPE html><html lang='nl'><head><meta charset='utf-8'>
+            html = """<!DOCTYPE html><html lang='nl'><head><meta charset='utf-8'>
 <title>Instellingen – SondeAlert</title>
 <style>
-body{{margin:0;min-height:100vh;background:linear-gradient(180deg,#0a2540,#001220);
-font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff;}}
-.wrap{{max-width:600px;margin:20px auto;padding:0 12px;}}
-.card{{background:rgba(255,255,255,0.08);padding:20px;border-radius:12px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);}}
-label{{display:block;margin-top:10px;font-weight:600;color:#4fc3f7;}}
-input,textarea{{width:100%;padding:8px;border:none;border-radius:8px;
-background:rgba(255,255,255,0.1);color:#fff;}}
-button{{margin-top:16px;padding:10px 16px;border:none;border-radius:8px;
-font-weight:600;cursor:pointer;}}
-.save{{background:#4fc3f7;color:#001220;}}
-.back{{background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;margin-left:8px;}}
+body{margin:0;min-height:100vh;background:linear-gradient(180deg,#0a2540,#001220);
+font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff;}
+.wrap{max-width:600px;margin:20px auto;padding:0 12px;}
+.card{background:rgba(255,255,255,0.08);padding:20px;border-radius:12px;
+box-shadow:0 0 15px rgba(0,0,0,0.3);}
+label{display:block;margin-top:10px;font-weight:600;color:#4fc3f7;}
+input,textarea{width:100%;padding:8px;border:none;border-radius:8px;
+background:rgba(255,255,255,0.1);color:#fff;}
+button{margin-top:16px;padding:10px 16px;border:none;border-radius:8px;
+font-weight:600;cursor:pointer;}
+.save{background:#4fc3f7;color:#001220;}
+.back{background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;margin-left:8px;}
 </style></head>
 <body><div class='wrap'>
 <h1>Instellingen</h1>
 <form id='settingsForm'>
-<label><input type='checkbox' name='BUZZER_ENABLED' {'checked' if s.get('BUZZER_ENABLED') else ''}> Buzzer actief</label>
+<label><input type='checkbox' name='BUZZER_ENABLED' {checked}> Buzzer actief</label>
 <label>NEAR_THRESHOLD_M (m):</label>
-<input name='NEAR_THRESHOLD_M' value='{s.get('NEAR_THRESHOLD_M',15000)}'>
+<input name='NEAR_THRESHOLD_M' value='{near}'>
 <label>MONTHS_BACK:</label>
-<input name='MONTHS_BACK' value='{s.get('MONTHS_BACK',24)}'>
+<input name='MONTHS_BACK' value='{months}'>
 <label>ALT_MAX_M:</label>
-<input name='ALT_MAX_M' value='{s.get('ALT_MAX_M',600)}'>
+<input name='ALT_MAX_M' value='{alt}'>
 <label>STATUS_KEEP (komma gescheiden):</label>
-<input name='STATUS_KEEP' value="{status_keep_text}">
+<input name='STATUS_KEEP' value='{status}'>
 <label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name='LAUNCH_FILTERS' rows='4'>{launch_filters_text}</textarea>
+<textarea name='LAUNCH_FILTERS' rows='4'>{launch}</textarea>
 <div><button type='submit' class='save'>Opslaan</button>
 <button type='button' class='back' onclick="window.location.href='/'">Terug</button></div>
 </form>
 
 <script>
-document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
+document.getElementById('settingsForm').addEventListener('submit', async function(e) {
   e.preventDefault();
-  const formData = new FormData(e.target);
-  const res = await fetch('/settings', {{method:'POST', body: formData}});
+  const formData = new FormData(this);
+  const res = await fetch('/settings', {method:'POST', body: formData});
   const j = await res.json();
   alert(j.msg || 'Instellingen opgeslagen ✅');
 });
 </script>
 
-</div></body></html>"""
+</div></body></html>""".format(
+                checked="checked" if s.get("BUZZER_ENABLED") else "",
+                near=s.get("NEAR_THRESHOLD_M", 15000),
+                months=s.get("MONTHS_BACK", 24),
+                alt=s.get("ALT_MAX_M", 600),
+                status=",".join(s.get("STATUS_KEEP", ["UNKNOWN", "NEED ATTENTION"])),
+                launch="\n".join(s.get("LAUNCH_FILTERS", ["DE BILT (NL)", "DE BILT"]))
+            )
             self._ok_html(html)
             return
 
@@ -194,7 +198,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
             with state_lock:
                 s = load_settings()
                 s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
-                for key in ("NEAR_THRESHOLD_M","MONTHS_BACK","ALT_MAX_M","UPDATE_HOURS"):
+                for key in ("NEAR_THRESHOLD_M", "MONTHS_BACK", "ALT_MAX_M", "UPDATE_HOURS"):
                     if key in data:
                         try:
                             val = data[key][0]
@@ -207,7 +211,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
                 save_settings(s)
 
-            # herlaad settings direct zodat ze actief zijn
+            # herlaad settings direct
             with state_lock:
                 SETTINGS.clear()
                 SETTINGS.update(load_settings())
@@ -219,8 +223,8 @@ document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
 
 # -----------------------------------------------------------
 def start(settings: dict):
-    bind_host = settings.get("BIND_HOST","0.0.0.0")
-    bind_port = int(settings.get("BIND_PORT",8080))
+    bind_host = settings.get("BIND_HOST", "0.0.0.0")
+    bind_port = int(settings.get("BIND_PORT", 8080))
     httpd = ThreadingHTTPServer((bind_host, bind_port), WebHandler)
     ip = socket.gethostbyname(socket.gethostname())
     print(f"[WEB] bereikbaar op http://{ip}:{bind_port}/")
