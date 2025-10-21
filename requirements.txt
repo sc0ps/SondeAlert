@@ -1,0 +1,16 @@
+# --- SondeAlert Python dependencies ---
+
+# Display / imaging
+Pillow
+luma.core
+luma.oled
+
+# Data & network
+requests
+paho-mqtt
+
+# Web interface templating
+jinja2
+
+# Raspberry Pi hardware (best-effort import)
+RPi.GPIO
