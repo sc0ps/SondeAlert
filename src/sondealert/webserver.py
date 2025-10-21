@@ -29,14 +29,14 @@ class SondeHandler(BaseHTTPRequestHandler):
             # ---- Hoofdpagina met kaart ----
             if path in ["/", "/index.html"]:
                 self._set_headers(200, "text/html; charset=utf-8")
-                lat = gps_data.get("lat")
-                lon = gps_data.get("lon")
+                lat = gps_data.get("lat") or 52.1
+                lon = gps_data.get("lon") or 4.3
 
                 html = f"""<!DOCTYPE html>
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<title>SondeAlert Webinterface</title>
+<title>SondeAlert Live Kaart</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
@@ -49,7 +49,7 @@ class SondeHandler(BaseHTTPRequestHandler):
 <header>🚀 SondeAlert Live Kaart</header>
 <div id="map"></div>
 <script>
-  const map = L.map('map').setView([{lat or '52.0'}, {lon or '5.0'}], 8);
+  const map = L.map('map').setView([{lat}, {lon}], 8);
   L.tileLayer('https://{{s}}.tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png', {{
       maxZoom: 19,
       attribution: '&copy; <a href="https://www.openstreetmap.org/">OSM</a> contributors'
@@ -59,13 +59,16 @@ class SondeHandler(BaseHTTPRequestHandler):
   let sondeMarkers = [];
 
   function updateMap() {{
+      // --- sondes ophalen ---
       fetch('/nearest.json')
         .then(r => r.json())
         .then(data => {{
-            // verwijder oude sondes
+            if (!Array.isArray(data)) {{
+                console.warn('Ongeldig sondedataformaat:', data);
+                return;
+            }}
             sondeMarkers.forEach(m => map.removeLayer(m));
             sondeMarkers = [];
-
             data.forEach(s => {{
                 const marker = L.marker([s.lat, s.lon]).addTo(map)
                   .bindPopup(`<b>${{s.name}}</b><br>${{s.alt}} m<br>${{s.status}}`);
@@ -74,7 +77,7 @@ class SondeHandler(BaseHTTPRequestHandler):
         }})
         .catch(err => console.error('Fetch sondes:', err));
 
-      // update userpositie
+      // --- GPS ophalen ---
       fetch('/gps.json')
         .then(r => r.json())
         .then(pos => {{
@@ -106,8 +109,14 @@ class SondeHandler(BaseHTTPRequestHandler):
                 try:
                     with open(SONDES_FILE, "r", encoding="utf-8") as f:
                         sondes = json.load(f)
+                    # ✅ Altijd een lijst teruggeven
+                    if not isinstance(sondes, list):
+                        sondes = []
                     self.wfile.write(json.dumps(sondes, ensure_ascii=False).encode("utf-8"))
                 except FileNotFoundError:
+                    self.wfile.write(b"[]")
+                except Exception as e:
+                    logger.exception("Fout bij laden sondes: %s", e)
                     self.wfile.write(b"[]")
                 return
 
@@ -128,13 +137,15 @@ class SondeHandler(BaseHTTPRequestHandler):
                     self.wfile.write(b"{}")
                 return
 
+            # ---- onbekende route ----
             else:
                 self._set_headers(404)
-                self.wfile.write(b'{{"error":"Not Found"}}')
+                self.wfile.write(b'{"error":"Not Found"}')
+
         except Exception as e:
             logger.exception("Fout bij GET: %s", e)
             self._set_headers(500)
-            self.wfile.write(b'{{"error":"Internal Server Error"}}')
+            self.wfile.write(b'{"error":"Internal Server Error"}')
 
     # === POST ===
     def do_POST(self):
