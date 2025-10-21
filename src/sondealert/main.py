@@ -1,49 +1,39 @@
-import threading, time
+import time, threading
 from .config import load_settings, save_settings
+from .gps import start as start_gps
 from .radiosondy import build_filtered_list, need_update
-from . import gps as gps_module
 from .proximity import start_proximity
 from .webserver import start as start_web
 
-def updater(settings: dict):
-    """Controleer regelmatig of radiosondy-data vernieuwd moet worden"""
-    while True:
-        try:
-            if need_update(settings):
-                print("[UPDATER] Nieuwe download nodig — bouw lijst...")
-                build_filtered_list(settings)
-        except Exception as e:
-            print("[UPDATER] Fout:", e)
-        time.sleep(int(settings["UPDATE_HOURS"]) * 3600)
-
 def main():
     print("=== SondeAlert gestart ===")
+
+    # Laad instellingen
     settings = load_settings()
-    save_settings(settings)  # zorg dat settings.json bestaat
+    save_settings(settings)
 
-    # eerste dataset laden of aanmaken
-    try:
-        if need_update(settings):
-            print("[INIT] Download start...")
-            build_filtered_list(settings)
-        else:
-            print("[INIT] Bestaande lijst is nog actueel.")
-    except Exception as e:
-        print("[INIT] Fout bij eerste build:", e)
+    # Controleer of update nodig is
+    if need_update():
+        try:
+            build_filtered_list()
+        except Exception as e:
+            print("[WARN] Kon dataset niet updaten:", e)
+    else:
+        print("[INIT] Bestaande lijst is nog actueel.")
 
-    # Start alle componenten in threads
-    gps_module.start(settings)
-    start_proximity(settings, gps_module)
-    start_web(settings)
+    # Start GPS
+    threading.Thread(target=start_gps, args=(settings,), daemon=True).start()
 
-    threading.Thread(target=updater, args=(settings,), daemon=True).start()
+    # Start proximity berekening
+    start_proximity()
 
-    # Hoofdlus blijft actief
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("Stop SondeAlert.")
+    # Start webserver
+    threading.Thread(target=start_web, args=(settings.get("BIND_HOST", "0.0.0.0"), settings.get("BIND_PORT", 8080)), daemon=True).start()
+
+    # Houd main actief
+    while True:
+        time.sleep(1)
+
 
 if __name__ == "__main__":
     main()
