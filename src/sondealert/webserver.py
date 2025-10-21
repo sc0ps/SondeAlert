@@ -8,7 +8,7 @@ from .config import save_settings, load_settings
 
 class WebHandler(SimpleHTTPRequestHandler):
     def log_message(self, *a):
-        pass
+        pass  # geen console spam
 
     # -----------------------------------------------------------
     def _ok_html(self, html: str):
@@ -31,7 +31,7 @@ class WebHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
 
-        # ---------- dashboard ----------
+        # ---------- Dashboard ----------
         if path in ("/", "/index.html"):
             with state_lock:
                 have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
@@ -125,10 +125,11 @@ window.addEventListener('load',()=>{{update();setInterval(update,5000);}});
             })
             return
 
-        # ---------- instellingen ----------
+        # ---------- Instellingen ----------
         elif path == "/settings":
             with state_lock:
                 s = load_settings()
+
             launch_filters_text = "\n".join(s.get("LAUNCH_FILTERS", ["DE BILT (NL)", "DE BILT"]))
             status_keep_text = ",".join(s.get("STATUS_KEEP", ["UNKNOWN", "NEED ATTENTION"]))
 
@@ -171,7 +172,8 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
   e.preventDefault();
   const formData = new FormData(this);
   const res = await fetch('/settings', {{method:'POST', body: formData}});
-  if(res.ok) alert('Instellingen opgeslagen ✅');
+  const j = await res.json();
+  alert(j.msg || 'Instellingen opgeslagen ✅');
 }});
 </script>
 
@@ -183,10 +185,11 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
             self.send_error(404)
 
     # -----------------------------------------------------------
-        def do_POST(self):
+    def do_POST(self):
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
             data = urllib.parse.parse_qs(self.rfile.read(length).decode())
+
             with state_lock:
                 s = load_settings()
                 s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
@@ -201,11 +204,11 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
                     s["STATUS_KEEP"] = [x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()]
                 if "LAUNCH_FILTERS" in data:
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
+
                 save_settings(s)
 
-            # laad instellingen opnieuw in geheugen
-            from .config import settings
-            with state_lock:
+                # instellingen opnieuw in geheugen laden
+                from .config import settings
                 settings.clear()
                 settings.update(load_settings())
 
@@ -214,6 +217,7 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
             self.send_error(404)
 
 
+# -----------------------------------------------------------
 def start(settings: dict):
     bind_host = settings.get("BIND_HOST", "0.0.0.0")
     bind_port = int(settings.get("BIND_PORT", 8080))
