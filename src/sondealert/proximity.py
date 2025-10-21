@@ -88,8 +88,9 @@ def get_status():
 # ----------------------------
 # Startfunctie voor de proximity-thread
 # ----------------------------
-def start_proximity():
+def start_proximity(settings=None, gps_module=None):
     """Start de proximity-thread als achtergrondproces."""
     t = threading.Thread(target=nearest_loop, daemon=True)
     t.start()
     print("[PROX] Proximity-thread gestart.")
+
