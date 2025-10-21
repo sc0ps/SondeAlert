@@ -67,7 +67,7 @@ h1 {
   background:var(--card);
   border-radius:14px;
   box-shadow:0 0 15px rgba(0,0,0,0.3);
-  padding:20px;
+  padding:24px 26px; /* extra padding rechts */
   margin-top:16px;
 }
 label {
@@ -84,6 +84,7 @@ input, textarea {
   color:#fff;
   padding:10px;
   margin-top:4px;
+  margin-bottom:6px;
   font-size:1em;
 }
 input[type="checkbox"] {
@@ -151,20 +152,19 @@ footer {
       <label><input type="checkbox" name="BUZZER_ENABLED" id="buzz"> Enable buzzer alert</label>
 
       <label for="thr">NEAR_THRESHOLD_M (m):</label>
-      <input id="thr" name="NEAR_THRESHOLD_M" value="15000">
+      <input id="thr" name="NEAR_THRESHOLD_M">
 
       <label for="months">MONTHS_BACK:</label>
-      <input id="months" name="MONTHS_BACK" value="24">
+      <input id="months" name="MONTHS_BACK">
 
       <label for="alt">ALT_MAX_M:</label>
-      <input id="alt" name="ALT_MAX_M" value="600">
+      <input id="alt" name="ALT_MAX_M">
 
       <label for="status">STATUS_KEEP (comma separated):</label>
-      <input id="status" name="STATUS_KEEP" value="UNKNOWN,NEED ATTENTION">
+      <input id="status" name="STATUS_KEEP">
 
       <label for="launch">LAUNCH_FILTERS (one per line):</label>
-      <textarea id="launch" name="LAUNCH_FILTERS" rows="4">DE BILT (NL)
-DE BILT</textarea>
+      <textarea id="launch" name="LAUNCH_FILTERS" rows="4"></textarea>
 
       <div style="margin-top:16px;text-align:center;">
         <button type="submit" class="save">Save Settings</button>
@@ -180,6 +180,24 @@ DE BILT</textarea>
 </footer>
 
 <script>
+// === load settings on page open ===
+async function loadSettings() {
+  try {
+    const r = await fetch("/api/settings");
+    const s = await r.json();
+    document.getElementById("thr").value = s.NEAR_THRESHOLD_M;
+    document.getElementById("months").value = s.MONTHS_BACK;
+    document.getElementById("alt").value = s.ALT_MAX_M;
+    document.getElementById("status").value = s.STATUS_KEEP.join(",");
+    document.getElementById("launch").value = s.LAUNCH_FILTERS.join("\n");
+    document.getElementById("buzz").checked = !!s.BUZZER_ENABLED;
+  } catch (e) {
+    console.error("Settings load failed", e);
+  }
+}
+loadSettings();
+
+// === save settings ===
 document.getElementById("settingsForm").addEventListener("submit", async e => {
   e.preventDefault();
   const form = e.target;
@@ -192,7 +210,6 @@ document.getElementById("settingsForm").addEventListener("submit", async e => {
   msg.style.display = "block";
   msg.style.background = j.ok ? "rgba(0,255,100,0.2)" : "rgba(255,100,0,0.2)";
   msg.style.color = j.ok ? "#00e676" : "#ff7043";
-
   setTimeout(() => { msg.style.display = "none"; }, 2500);
 });
 </script>
