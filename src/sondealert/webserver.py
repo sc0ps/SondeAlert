@@ -183,35 +183,35 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
             self.send_error(404)
 
     # -----------------------------------------------------------
-    def do_POST(self):
-    if self.path == "/settings":
-        length = int(self.headers.get("Content-Length", 0))
-        data = urllib.parse.parse_qs(self.rfile.read(length).decode())
-        with state_lock:
-            s = load_settings()
-            s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
-            for key in ("NEAR_THRESHOLD_M","MONTHS_BACK","ALT_MAX_M","UPDATE_HOURS"):
-                if key in data:
-                    try:
-                        val = data[key][0]
-                        s[key] = float(val) if "." in val else int(val)
-                    except:
-                        pass
-            if "STATUS_KEEP" in data:
-                s["STATUS_KEEP"] = [x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()]
-            if "LAUNCH_FILTERS" in data:
-                s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
-            save_settings(s)
+        def do_POST(self):
+        if self.path == "/settings":
+            length = int(self.headers.get("Content-Length", 0))
+            data = urllib.parse.parse_qs(self.rfile.read(length).decode())
+            with state_lock:
+                s = load_settings()
+                s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
+                for key in ("NEAR_THRESHOLD_M", "MONTHS_BACK", "ALT_MAX_M", "UPDATE_HOURS"):
+                    if key in data:
+                        try:
+                            val = data[key][0]
+                            s[key] = float(val) if "." in val else int(val)
+                        except:
+                            pass
+                if "STATUS_KEEP" in data:
+                    s["STATUS_KEEP"] = [x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()]
+                if "LAUNCH_FILTERS" in data:
+                    s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
+                save_settings(s)
 
-        # laad instellingen opnieuw in geheugen
-        from .config import settings
-        with state_lock:
-            settings.clear()
-            settings.update(load_settings())
+            # laad instellingen opnieuw in geheugen
+            from .config import settings
+            with state_lock:
+                settings.clear()
+                settings.update(load_settings())
 
-        self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
-    else:
-        self.send_error(404)
+            self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
+        else:
+            self.send_error(404)
 
 
 def start(settings: dict):
