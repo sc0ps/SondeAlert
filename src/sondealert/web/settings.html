@@ -56,16 +56,21 @@ async function loadSettings() {
   }
 }
 
-document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
   e.preventDefault();
-  const formData = new FormData(e.target);
-  const res = await fetch('/settings', {method:'POST', body: formData});
+  const form = e.target;
+  const formData = new URLSearchParams(new FormData(form));  // << fix hier!
+  const res = await fetch('/settings', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: formData.toString()
+  });
   const j = await res.json();
   alert(j.msg || 'Instellingen opgeslagen ✅');
-  loadSettings(); // vernieuw na opslaan
+  loadSettings(); // herlaad na opslaan
 });
 
-loadSettings(); // automatisch bij openen
+loadSettings(); // laad bij start
 </script>
 </body>
 </html>
