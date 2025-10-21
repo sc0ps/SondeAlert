@@ -1,9 +1,9 @@
-import json, socket, threading, urllib.parse
+import json, socket, threading, urllib.parse, os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from .utils import state_lock
 from . import gps as gps_module
 from . import proximity as prox
-from .config import save_settings, load_settings
+from .config import save_settings, load_settings, SETTINGS
 
 
 class WebHandler(SimpleHTTPRequestHandler):
@@ -23,7 +23,7 @@ class WebHandler(SimpleHTTPRequestHandler):
         data = json.dumps(obj).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
         self.end_headers()
         self.wfile.write(data)
 
@@ -33,29 +33,26 @@ class WebHandler(SimpleHTTPRequestHandler):
 
         # ---------- Dashboard ----------
         if path in ("/", "/index.html"):
-            with state_lock:
-                have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
-
-            html = f"""<!DOCTYPE html>
+            html = """<!DOCTYPE html>
 <html lang='nl'><head><meta charset='utf-8'><title>SondeAlert</title>
 <style>
-:root{{--bg1:#0a2540;--bg2:#001220;--accent:#4fc3f7;--card:rgba(255,255,255,0.08);
---text:#fff;--muted:#aab;}}
-body{{margin:0;min-height:100vh;background:linear-gradient(180deg,var(--bg1),var(--bg2));
+:root{--bg1:#0a2540;--bg2:#001220;--accent:#4fc3f7;--card:rgba(255,255,255,0.08);
+--text:#fff;--muted:#aab;}
+body{margin:0;min-height:100vh;background:linear-gradient(180deg,var(--bg1),var(--bg2));
 background-attachment:fixed;background-size:cover;font-family:system-ui,Segoe UI,Arial,sans-serif;
-color:var(--text);}}
-.wrap{{max-width:900px;margin:20px auto;padding:0 12px;}}
-.card{{background:var(--card);padding:20px;border-radius:12px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);margin-bottom:12px;}}
-h1{{color:var(--accent);margin:8px 0 16px;}}
-table{{border-collapse:collapse;width:100%;}}
-th,td{{border-bottom:1px solid rgba(255,255,255,.1);padding:6px 4px;text-align:left;}}
-.badge{{display:inline-block;padding:2px 8px;border:1px solid var(--accent);
-border-radius:999px;color:var(--accent);}}
-#map{{height:420px;border-radius:10px;margin-top:12px;}}
-button.tab{{background:transparent;color:var(--accent);border:1px solid var(--accent);
-padding:6px 12px;border-radius:8px;margin-right:6px;cursor:pointer;font-weight:600;}}
-button.tab.active{{background:var(--accent);color:#001220;}}
+color:var(--text);}
+.wrap{max-width:900px;margin:20px auto;padding:0 12px;}
+.card{background:var(--card);padding:20px;border-radius:12px;
+box-shadow:0 0 15px rgba(0,0,0,0.3);margin-bottom:12px;}
+h1{color:var(--accent);margin:8px 0 16px;}
+table{border-collapse:collapse;width:100%;}
+th,td{border-bottom:1px solid rgba(255,255,255,.1);padding:6px 4px;text-align:left;}
+.badge{display:inline-block;padding:2px 8px;border:1px solid var(--accent);
+border-radius:999px;color:var(--accent);}
+#map{height:420px;border-radius:10px;margin-top:12px;}
+button.tab{background:transparent;color:var(--accent);border:1px solid var(--accent);
+padding:6px 12px;border-radius:8px;margin-right:6px;cursor:pointer;font-weight:600;}
+button.tab.active{background:var(--accent);color:#001220;}
 </style>
 <link rel='stylesheet' href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'/>
 <script src='https://unpkg.com/leaflet@1.9.4/dist/leaflet.js'></script>
@@ -68,8 +65,7 @@ button.tab.active{{background:var(--accent);color:#001220;}}
 </div>
 
 <div class='card'>
-  <div>GPS: <span class='badge'>{'OK' if have else 'OFF'}</span> &nbsp;
-  Positie: <b>{f'{glat:.5f},{glon:.5f}' if have else '—'}</b></div>
+  <div id='gpsStatus'>GPS: laden...</div>
 </div>
 
 <div class='card'>
@@ -80,35 +76,40 @@ button.tab.active{{background:var(--accent);color:#001220;}}
 
 <script>
 let map=L.map('map').setView([52.1,5.2],7);
-L.tileLayer('https://tile.openstreetmap.org/{{z}}/{{x}}/{{y}}.png',{{maxZoom:18}}).addTo(map);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
 let my=null,sn=null,line=null;
 
-async function update(){{
-  try{{
+async function refreshData(){
+  try{
     const r=await fetch('/nearest.json?'+Date.now());
     const s=await r.json();
+    const gps=s.gps;
+    document.getElementById('gpsStatus').innerHTML = gps.have ?
+      `GPS: <span class='badge'>OK</span> &nbsp; Positie: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>` :
+      "GPS: <span class='badge' style='color:red;border-color:red;'>OFF</span>";
+
     document.getElementById('nearest').innerHTML = s.nearest ?
-      `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th>
-       <th>Laatste</th><th>Locatie</th></tr>
-       <tr><td>${{s.nearest.id}}</td><td>${{s.nearest.status}}</td>
-           <td>${{(s.distance_m/1000).toFixed(2)}} km</td>
-           <td>${{parseInt(s.nearest.alt)}} m</td>
-           <td>${{s.nearest.last}}</td><td>${{s.nearest.place}}</td></tr></table>`
+      `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th><th>Laatste</th><th>Locatie</th></tr>
+       <tr><td>${s.nearest.id}</td><td>${s.nearest.status}</td><td>${(s.distance_m/1000).toFixed(2)} km</td>
+           <td>${parseInt(s.nearest.alt)} m</td><td>${s.nearest.last}</td><td>${s.nearest.place}</td></tr></table>`
       : "Geen sonde binnen bereik.";
-    if(!s.gps.have) return;
-    let lat=s.gps.lat,lon=s.gps.lon;
+
+    if(!gps.have) return;
+    const lat=gps.lat, lon=gps.lon;
     if(!my) my=L.marker([lat,lon]).addTo(map).bindPopup('Jij'); else my.setLatLng([lat,lon]);
-    const n=s.nearest,d=s.distance_m;
-    if(n&&d){{
-      let sl=n.lat,so=n.lon;
-      if(!sn) sn=L.marker([sl,so]).addTo(map).bindPopup(`Sonde ${{n.id}}`); else sn.setLatLng([sl,so]);
+    const n=s.nearest, d=s.distance_m;
+    if(n&&d){
+      const sl=n.lat,so=n.lon;
+      if(!sn) sn=L.marker([sl,so]).addTo(map).bindPopup(`Sonde ${n.id}`); else sn.setLatLng([sl,so]);
       if(line) line.remove();
-      line=L.polyline([[lat,lon],[sl,so]],{{color:'red'}}).addTo(map);
-      map.fitBounds([[lat,lon],[sl,so]],{{padding:[40,40]}});
-    }}
-  }}catch(e){{console.error(e);}}
-}}
-window.addEventListener('load',()=>{{update();setInterval(update,5000);}});
+      line=L.polyline([[lat,lon],[sl,so]],{color:'red'}).addTo(map);
+      map.fitBounds([[lat,lon],[sl,so]],{padding:[40,40]});
+    }
+  }catch(e){console.error(e);}
+}
+
+setInterval(refreshData,5000);
+refreshData();
 </script>
 </div></body></html>"""
             self._ok_html(html)
@@ -151,7 +152,7 @@ font-weight:600;cursor:pointer;}}
 </style></head>
 <body><div class='wrap'>
 <h1>Instellingen</h1>
-<form id='settingsForm' method='POST' action='/settings'>
+<form id='settingsForm'>
 <label><input type='checkbox' name='BUZZER_ENABLED' {'checked' if s.get('BUZZER_ENABLED') else ''}> Buzzer actief</label>
 <label>NEAR_THRESHOLD_M (m):</label>
 <input name='NEAR_THRESHOLD_M' value='{s.get('NEAR_THRESHOLD_M',15000)}'>
@@ -168,13 +169,13 @@ font-weight:600;cursor:pointer;}}
 </form>
 
 <script>
-document.getElementById('settingsForm').addEventListener('submit', async function(e) {{
+document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const formData = new FormData(this);
+  const formData = new FormData(e.target);
   const res = await fetch('/settings', {{method:'POST', body: formData}});
   const j = await res.json();
   alert(j.msg || 'Instellingen opgeslagen ✅');
-}});
+});
 </script>
 
 </div></body></html>"""
@@ -193,7 +194,7 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
             with state_lock:
                 s = load_settings()
                 s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
-                for key in ("NEAR_THRESHOLD_M", "MONTHS_BACK", "ALT_MAX_M", "UPDATE_HOURS"):
+                for key in ("NEAR_THRESHOLD_M","MONTHS_BACK","ALT_MAX_M","UPDATE_HOURS"):
                     if key in data:
                         try:
                             val = data[key][0]
@@ -206,9 +207,10 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
                 save_settings(s)
 
-            # herlaad instellingen direct in het actieve geheugen
+            # herlaad settings direct zodat ze actief zijn
             with state_lock:
-                prox.settings = load_settings()
+                SETTINGS.clear()
+                SETTINGS.update(load_settings())
 
             self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
         else:
@@ -217,8 +219,8 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
 
 # -----------------------------------------------------------
 def start(settings: dict):
-    bind_host = settings.get("BIND_HOST", "0.0.0.0")
-    bind_port = int(settings.get("BIND_PORT", 8080))
+    bind_host = settings.get("BIND_HOST","0.0.0.0")
+    bind_port = int(settings.get("BIND_PORT",8080))
     httpd = ThreadingHTTPServer((bind_host, bind_port), WebHandler)
     ip = socket.gethostbyname(socket.gethostname())
     print(f"[WEB] bereikbaar op http://{ip}:{bind_port}/")
