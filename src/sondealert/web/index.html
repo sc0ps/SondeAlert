@@ -1,88 +1,161 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-  <meta charset="UTF-8" />
-  <title>🚀 SondeAlert Live Kaart</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SondeAlert Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
-    html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
-    #map { height: 100%; width: 100%; }
-    .leaflet-popup-content { font-size: 14px; }
-    .status-UNKNOWN { color: #2b7bff; }
-    .status-NEED_ATTENTION { color: #ff3b30; font-weight: bold; }
-    .header {
-      background-color: #1565c0;
-      color: white;
-      font-size: 18px;
-      font-weight: 500;
-      padding: 8px 12px;
-      text-align: center;
+    body {
+      margin: 0;
       font-family: system-ui, sans-serif;
+      background-color: #f7f9fb;
     }
-    .settings-link {
-      position: absolute;
-      top: 10px;
-      right: 15px;
-      background: white;
-      border-radius: 6px;
-      padding: 6px 10px;
-      font-size: 14px;
-      text-decoration: none;
-      color: #1565c0;
-      border: 1px solid #ccc;
+
+    header {
+      background-color: #005bbb;
+      color: white;
+      padding: 10px 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    }
+
+    #status {
+      font-size: 0.9rem;
+    }
+
+    #map {
+      height: calc(100vh - 60px);
+      width: 100%;
+    }
+
+    .sonde-popup {
+      font-size: 0.9rem;
+    }
+
+    .gps-info {
+      font-size: 0.9rem;
+      margin-top: 4px;
     }
   </style>
 </head>
 <body>
-  <div class="header">
-    🚀 SondeAlert Live Kaart
-    <a class="settings-link" href="/settings.html">⚙ Instellingen</a>
-  </div>
+  <header>
+    <div>
+      <strong>🛰️ SondeAlert</strong> &nbsp;
+      <span id="gps-status">GPS: onbekend</span>
+    </div>
+    <div id="gps-coords">Lat: ---, Lon: ---</div>
+    <div><a href="/settings.html" style="color:white; text-decoration:none;">⚙️ Instellingen</a></div>
+  </header>
+
   <div id="map"></div>
 
   <script>
-    const map = L.map("map").setView([52.0607, 4.2664], 12);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "&copy; OpenStreetMap contributors",
+    let map = L.map('map').setView([52.1, 4.3], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap',
     }).addTo(map);
 
-    const gpsMarker = L.marker([52.0607, 4.2664]).addTo(map).bindPopup("GPS-locatie");
+    let gpsMarker = null;
     let sondeMarkers = [];
+    let connectionLine = null;
+    let nearThreshold = 15000; // standaardwaarde
+    let lastNearest = null;
+
+    // Helper: afstandsformattering
+    function formatDistance(m) {
+      if (m < 1000) return `${m.toFixed(0)} m`;
+      return `${(m/1000).toFixed(2)} km`;
+    }
 
     async function updateData() {
       try {
-        const gps = await fetch("/gps.json").then((r) => r.json());
-        const sondes = await fetch("/nearest.json").then((r) => r.json());
-        if (gps.lat && gps.lon) gpsMarker.setLatLng([gps.lat, gps.lon]);
-        sondeMarkers.forEach((m) => map.removeLayer(m));
+        // Settings ophalen
+        const settings = await fetch('/settings.json').then(r => r.json());
+        nearThreshold = settings.NEAR_THRESHOLD_M || 15000;
+
+        // GPS ophalen
+        const gps = await fetch('/gps.json').then(r => r.json());
+        const lat = gps.lat || 0;
+        const lon = gps.lon || 0;
+        const fix = gps.fix || false;
+        const gpsText = fix ? '✅ Fix OK' : '⚠️ Geen signaal';
+        document.getElementById('gps-status').innerText = `GPS: ${gpsText}`;
+        document.getElementById('gps-coords').innerText = `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
+
+        // GPS marker
+        if (!gpsMarker) {
+          gpsMarker = L.marker([lat, lon], { title: 'Jouw positie' }).addTo(map);
+        } else {
+          gpsMarker.setLatLng([lat, lon]);
+        }
+
+        // Sondes ophalen
+        const sondes = await fetch('/nearest.json').then(r => r.json());
+
+        // Oude markers verwijderen
+        sondeMarkers.forEach(m => map.removeLayer(m));
         sondeMarkers = [];
-        sondes.forEach((s) => {
-          const color = s.status === "NEED ATTENTION" ? "red" : "blue";
-          const marker = L.circleMarker([s.lat, s.lon], {
-            radius: 8, color, fillColor: color, fillOpacity: 0.8
+
+        // Dichtstbijzijnde bepalen
+        let nearest = null;
+        let minDist = Infinity;
+
+        sondes.forEach(s => {
+          const marker = L.marker([s.lat, s.lon], {
+            icon: L.icon({
+              iconUrl: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
+              iconSize: [25, 25],
+            })
           }).addTo(map);
-          marker.bindPopup(`
-            <b>${s.id}</b><br/>
-            📍 ${s.place}<br/>
-            ⏱️ ${s.last}<br/>
-            📡 ${s.distance} m<br/>
-            🏔️ ${s.alt} m<br/>
-            <span class="status-${s.status.replace(" ", "_")}">${s.status}</span>
-          `);
+
+          const popup = `
+            <div class="sonde-popup">
+              <strong>${s.name || 'Onbekend'}</strong><br>
+              Afstand: ${formatDistance(s.distance_m)}<br>
+              Hoogte: ${s.alt_m || '?'} m<br>
+              Status: ${s.status || 'Onbekend'}<br>
+              Laatste update: ${s.time || '-'}
+            </div>`;
+          marker.bindPopup(popup);
           sondeMarkers.push(marker);
+
+          if (s.distance_m < minDist) {
+            nearest = s;
+            minDist = s.distance_m;
+          }
         });
+
+        // Lijn naar dichtstbijzijnde
+        if (connectionLine) map.removeLayer(connectionLine);
+        if (nearest && fix) {
+          connectionLine = L.polyline([[lat, lon], [nearest.lat, nearest.lon]], {
+            color: 'red',
+            weight: 2,
+            dashArray: '5,5'
+          }).addTo(map);
+          lastNearest = nearest;
+        }
+
+        // Automatisch centreren
+        if (fix && nearest) {
+          const bounds = L.latLngBounds([[lat, lon], [nearest.lat, nearest.lon]]);
+          map.fitBounds(bounds, { padding: [50, 50] });
+        } else if (fix) {
+          map.setView([lat, lon], 11);
+        }
+
       } catch (err) {
-        console.error("Update fout:", err);
+        console.error('Update-fout:', err);
       }
     }
 
     updateData();
-    setInterval(updateData, 5000);
+    setInterval(updateData, 10000);
   </script>
 </body>
 </html>
