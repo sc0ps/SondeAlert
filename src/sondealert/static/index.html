@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8" />
+  <title>🚀 SondeAlert Live Kaart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      width: 100%;
+    }
+    #map {
+      height: 100%;
+      width: 100%;
+    }
+    .leaflet-popup-content {
+      font-size: 14px;
+    }
+    .status-UNKNOWN {
+      color: #2b7bff;
+    }
+    .status-NEED_ATTENTION {
+      color: #ff3b30;
+      font-weight: bold;
+    }
+    .header {
+      background-color: #1565c0;
+      color: white;
+      font-size: 18px;
+      font-weight: 500;
+      padding: 8px 12px;
+      text-align: center;
+      font-family: system-ui, sans-serif;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">🚀 SondeAlert Live Kaart</div>
+  <div id="map"></div>
+
+  <script>
+    const map = L.map("map").setView([52.0607, 4.2664], 12);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
+
+    const gpsMarker = L.marker([52.0607, 4.2664], { color: "blue" })
+      .addTo(map)
+      .bindPopup("GPS-locatie");
+
+    let sondeMarkers = [];
+
+    async function updateData() {
+      try {
+        const gps = await fetch("/gps.json").then((r) => r.json());
+        const sondes = await fetch("/nearest.json").then((r) => r.json());
+
+        if (gps.lat && gps.lon) {
+          gpsMarker.setLatLng([gps.lat, gps.lon]);
+        }
+
+        sondeMarkers.forEach((m) => map.removeLayer(m));
+        sondeMarkers = [];
+
+        sondes.forEach((s) => {
+          const color = s.status === "NEED ATTENTION" ? "red" : "blue";
+          const marker = L.circleMarker([s.lat, s.lon], {
+            radius: 8,
+            color,
+            fillColor: color,
+            fillOpacity: 0.8,
+          }).addTo(map);
+
+          marker.bindPopup(`
+            <b>${s.id}</b><br/>
+            📍 ${s.place}<br/>
+            ⏱️ ${s.last}<br/>
+            📡 ${s.distance} m<br/>
+            🏔️ ${s.alt} m<br/>
+            <span class="status-${s.status.replace(" ", "_")}">${s.status}</span>
+          `);
+
+          sondeMarkers.push(marker);
+        });
+      } catch (err) {
+        console.error("Update fout:", err);
+      }
+    }
+
+    updateData();
+    setInterval(updateData, 5000);
+  </script>
+</body>
+</html>
