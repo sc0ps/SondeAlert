@@ -1,96 +1,85 @@
-import json, os, time, threading
-from .utils import state_lock, haversine
-from .config import OUT_JSON
+import math, time
+from .config import load_settings
+from .utils import state_lock
 
-# --- GPIO setup (buzzer) ---
-try:
-    import RPi.GPIO as GPIO
-    GPIO.setwarnings(False)
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setup(18, GPIO.OUT, initial=GPIO.LOW)
-    HAVE_GPIO = True
-except Exception as e:
-    print(f"[!] GPIO niet beschikbaar: {e}")
-    HAVE_GPIO = False
-
-# --- Globale status ---
+# Gedeelde statusvariabelen
+gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 nearest, nearest_d_m = None, None
+items = []  # lijst van sondes (uit radiosondy.py)
+settings = {}  # actieve instellingen (wordt live bijgewerkt)
 
-def blelele_pattern_for_distance(d):
-    """
-    Retourneert het patroon voor afstand:
-    (aantal herhalingen, pauze_tussen_signalen_ms, blok_pauze_s)
-    """
-    if not d:
-        return 0, 0, 10
-    if d > 5000:
-        return 1, 250, 10
-    elif d > 2000:
-        return 2, 200, 10
-    elif d > 500:
-        return 3, 180, 10
-    else:
-        return 5, 140, 10
 
-def _load_items():
-    """Laad sondes uit JSON-bestand"""
-    if not os.path.exists(OUT_JSON):
-        return []
-    try:
-        j = json.load(open(OUT_JSON))
-        return j.get("items", [])
-    except Exception:
-        return []
+# ----------------------------
+# Hulpfuncties
+# ----------------------------
+def deg2rad(d):
+    return d * math.pi / 180.0
 
-def start_proximity(settings: dict, gps_module):
-    """
-    Start threads voor:
-    - berekenen van dichtstbijzijnde sonde
-    - aansturen van buzzer
-    """
-    thr = float(settings.get("NEAR_THRESHOLD_M", 15000.0))
 
-    def nearest_loop():
-        global nearest, nearest_d_m
-        while True:
+def haversine(lat1, lon1, lat2, lon2):
+    """Bereken afstand in meters tussen twee punten op aarde."""
+    R = 6371000.0
+    dLat = deg2rad(lat2 - lat1)
+    dLon = deg2rad(lon2 - lon1)
+    a = math.sin(dLat / 2) ** 2 + math.cos(deg2rad(lat1)) * math.cos(deg2rad(lat2)) * math.sin(dLon / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    return R * c
+
+
+# ----------------------------
+# Hoofd-thread: berekent dichtstbijzijnde sonde
+# ----------------------------
+def nearest_loop():
+    """Continu controleren welke sonde het dichtstbij is."""
+    global nearest, nearest_d_m
+
+    while True:
+        with state_lock:
+            # Laad steeds actuele instellingen
+            s = load_settings()
+            thr = float(s.get("NEAR_THRESHOLD_M", 10000))
+            have, glat, glon = gps_have, gps_lat, gps_lon
+            lst = list(items)
+
+        if have and lst:
+            # Vind de dichtstbijzijnde sonde
+            best = min(lst, key=lambda it: haversine(glat, glon, it["lat"], it["lon"]))
+            d = haversine(glat, glon, best["lat"], best["lon"])
+
             with state_lock:
-                have = gps_module.gps_have
-                glat = gps_module.gps_lat
-                glon = gps_module.gps_lon
-
-            lst = _load_items()
-            if have and lst:
-                best = min(lst, key=lambda it: haversine(glat, glon, it["lat"], it["lon"]))
-                d = haversine(glat, glon, best["lat"], best["lon"])
-                with state_lock:
-                    nearest, nearest_d_m = (best, d) if d <= thr else (None, None)
-            else:
-                with state_lock:
+                if d <= thr:
+                    nearest, nearest_d_m = best, d
+                    print(f"[PROX] Dichtste sonde {best['id']} op {d/1000:.2f} km (binnen drempel {thr/1000:.1f} km)")
+                else:
                     nearest, nearest_d_m = None, None
-            time.sleep(1)
-
-    def buzzer_loop():
-        """Stuurt buzzer aan volgens afstandspatroon"""
-        if not HAVE_GPIO:
-            return
-        while True:
+                    print(f"[PROX] Geen sonde binnen bereik (drempel {thr/1000:.1f} km, dichtste {d/1000:.2f} km)")
+        else:
             with state_lock:
-                enabled = bool(settings.get("BUZZER_ENABLED", True))
-                n = nearest
-                d = nearest_d_m
+                nearest, nearest_d_m = None, None
 
-            if enabled and n and d:
-                reps, inner_ms, block_s = blelele_pattern_for_distance(d)
-                for _ in range(reps):
-                    for _ in range(6):  # 6 korte piepjes per blok
-                        GPIO.output(18, GPIO.HIGH)
-                        time.sleep(0.015)
-                        GPIO.output(18, GPIO.LOW)
-                        time.sleep(0.010)
-                    time.sleep(inner_ms / 1000)
-                time.sleep(block_s)
-            else:
-                time.sleep(0.2)
+        time.sleep(1)
 
-    threading.Thread(target=nearest_loop, daemon=True).start()
-    threading.Thread(target=buzzer_loop, daemon=True).start()
+
+# ----------------------------
+# Functie om GPS-positie live bij te werken
+# ----------------------------
+def update_gps(lat, lon):
+    """Wordt aangeroepen vanuit gps.py wanneer een nieuw NMEA-pakket binnenkomt."""
+    global gps_have, gps_lat, gps_lon, gps_last
+    with state_lock:
+        gps_have, gps_lat, gps_lon, gps_last = True, lat, lon, int(time.time())
+
+
+# ----------------------------
+# Handige getter voor huidige status
+# ----------------------------
+def get_status():
+    """Retourneert een snapshot van de huidige proximiteit-status."""
+    with state_lock:
+        return {
+            "gps_have": gps_have,
+            "gps_lat": gps_lat,
+            "gps_lon": gps_lon,
+            "nearest": nearest,
+            "distance_m": nearest_d_m
+        }
