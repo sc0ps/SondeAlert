@@ -62,9 +62,12 @@ class WebHandler(SimpleHTTPRequestHandler):
             with state_lock:
                 n, d = prox.nearest, prox.nearest_d_m
                 have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
+                sondes = prox.in_range
             self._ok_json({
                 "gps": {"have": have, "lat": glat if have else None, "lon": glon if have else None},
-                "nearest": n, "distance_m": d
+                "nearest": n,
+                "distance_m": d,
+                "in_range": sondes
             })
             return
 

@@ -6,70 +6,154 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-:root{--bg1:#0a2540;--bg2:#001220;--accent:#4fc3f7;--card:rgba(255,255,255,0.08);
---text:#fff;--muted:#aab;}
-body{margin:0;min-height:100vh;background:linear-gradient(180deg,var(--bg1),var(--bg2));
-background-attachment:fixed;font-family:system-ui,Segoe UI,Arial,sans-serif;color:var(--text);}
+:root{
+  --bg1:#0a2540;
+  --bg2:#001220;
+  --accent:#4fc3f7;
+  --card:rgba(255,255,255,0.08);
+  --text:#fff;
+  --muted:#aab;
+}
+body{
+  margin:0;
+  min-height:100vh;
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+  background-attachment:fixed;
+  font-family:system-ui,Segoe UI,Arial,sans-serif;
+  color:var(--text);
+}
 .wrap{max-width:900px;margin:20px auto;padding:0 12px;}
-.card{background:var(--card);padding:20px;border-radius:12px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);margin-bottom:12px;}
+.card{
+  background:var(--card);
+  padding:20px;
+  border-radius:12px;
+  box-shadow:0 0 15px rgba(0,0,0,0.3);
+  margin-bottom:12px;
+}
 h1{color:var(--accent);}
-button.tab{background:transparent;color:var(--accent);border:1px solid var(--accent);
-padding:6px 12px;border-radius:8px;margin-right:6px;cursor:pointer;font-weight:600;}
+button.tab{
+  background:transparent;
+  color:var(--accent);
+  border:1px solid var(--accent);
+  padding:6px 12px;
+  border-radius:8px;
+  margin-right:6px;
+  cursor:pointer;
+  font-weight:600;
+}
 button.tab.active{background:var(--accent);color:#001220;}
-.badge{padding:2px 8px;border:1px solid var(--accent);border-radius:999px;color:var(--accent);}
-#map{height:420px;border-radius:10px;margin-top:12px;}
+.badge{
+  display:inline-block;
+  padding:2px 8px;
+  border:1px solid var(--accent);
+  border-radius:999px;
+  color:var(--accent);
+}
+#map{
+  height:420px;
+  border-radius:10px;
+  margin-top:12px;
+}
+table{
+  width:100%;
+  border-collapse:collapse;
+  margin-top:6px;
+}
+th,td{
+  text-align:left;
+  padding:6px 4px;
+  border-bottom:1px solid rgba(255,255,255,0.1);
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-<h1>SondeAlert</h1>
-<div><button class="tab active" onclick="window.location.href='/'">Dashboard</button>
-<button class="tab" onclick="window.location.href='/settings'">Instellingen</button></div>
+  <h1>SondeAlert</h1>
+  <div>
+    <button class="tab active" onclick="window.location.href='/'">Dashboard</button>
+    <button class="tab" onclick="window.location.href='/settings'">Instellingen</button>
+  </div>
 
-<div class="card">
-<div id="gpsStatus">GPS: laden...</div>
-</div>
+  <div class="card">
+    <div id="gpsStatus">GPS: laden...</div>
+  </div>
 
-<div class="card">
-<h3>Dichtstbijzijnde sonde</h3>
-<div id="nearest">Laden...</div>
-<div id="map"></div>
-</div>
+  <div class="card">
+    <h3>Sondes binnen bereik</h3>
+    <div id="nearest">Laden...</div>
+    <div id="map"></div>
+  </div>
 </div>
 
 <script>
-let map=L.map('map').setView([52.1,5.2],7);
+let map = L.map('map').setView([52.1,5.2], 7);
 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
-let my=null,sn=null,line=null;
+
+let my = null;
+let line = null;
+let sondeMarkers = [];
 
 async function refreshData(){
   try{
-    const r=await fetch('/nearest.json?'+Date.now());
-    const s=await r.json();
-    const gps=s.gps;
+    const r = await fetch('/nearest.json?' + Date.now());
+    const s = await r.json();
+    const gps = s.gps;
+
+    // GPS-status
     document.getElementById('gpsStatus').innerHTML = gps.have ?
       `GPS: <span class='badge'>OK</span> &nbsp; Positie: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>` :
       "GPS: <span class='badge' style='color:red;border-color:red;'>OFF</span>";
-    document.getElementById('nearest').innerHTML = s.nearest ?
-      `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th><th>Laatste</th><th>Locatie</th></tr>
-       <tr><td>${s.nearest.id}</td><td>${s.nearest.status}</td><td>${(s.distance_m/1000).toFixed(2)} km</td>
-       <td>${parseInt(s.nearest.alt)} m</td><td>${s.nearest.last}</td><td>${s.nearest.place}</td></tr></table>`
-      : "Geen sonde binnen bereik.";
-    if(!gps.have)return;
-    const lat=gps.lat,lon=gps.lon;
-    if(!my) my=L.marker([lat,lon]).addTo(map).bindPopup('Jij'); else my.setLatLng([lat,lon]);
-    const n=s.nearest,d=s.distance_m;
-    if(n&&d){
-      const sl=n.lat,so=n.lon;
-      if(!sn) sn=L.marker([sl,so]).addTo(map).bindPopup(`Sonde ${n.id}`); else sn.setLatLng([sl,so]);
-      if(line) line.remove();
-      line=L.polyline([[lat,lon],[sl,so]],{color:'red'}).addTo(map);
-      map.fitBounds([[lat,lon],[sl,so]],{padding:[40,40]});
+
+    // Stop als er geen GPS is
+    if(!gps.have) return;
+
+    // Update eigen positie
+    const lat = gps.lat, lon = gps.lon;
+    if(!my) my = L.marker([lat,lon]).addTo(map).bindPopup('Jij');
+    else my.setLatLng([lat,lon]);
+
+    // Alle sondes binnen bereik
+    const lijst = s.in_range || [];
+    document.getElementById('nearest').innerHTML =
+      lijst.length
+        ? `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th><th>Laatste</th><th>Locatie</th></tr>${
+            lijst.map(x =>
+              `<tr><td>${x.id}</td><td>${x.status}</td><td>${(x.distance_m/1000).toFixed(2)} km</td>
+              <td>${parseInt(x.alt)} m</td><td>${x.last}</td><td>${x.place}</td></tr>`
+            ).join("")
+          }</table>`
+        : "Geen sonde binnen bereik.";
+
+    // Oude markers verwijderen
+    sondeMarkers.forEach(m => map.removeLayer(m));
+    sondeMarkers = [];
+
+    // Nieuwe markers toevoegen
+    lijst.forEach(x => {
+      const m = L.marker([x.lat, x.lon], {
+        icon: L.icon({
+          iconUrl: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
+          iconSize: [22,22]
+        })
+      }).addTo(map).bindPopup(`Sonde ${x.id}<br>${(x.distance_m/1000).toFixed(2)} km`);
+      sondeMarkers.push(m);
+    });
+
+    // Lijn naar dichtste sonde
+    const n = s.nearest, d = s.distance_m;
+    if(line) line.remove();
+    if(n && d){
+      line = L.polyline([[lat,lon],[n.lat,n.lon]],{color:'red'}).addTo(map);
+      map.fitBounds([[lat,lon],[n.lat,n.lon]],{padding:[40,40]});
     }
-  }catch(e){console.error(e);}
+  }catch(e){
+    console.error("update error",e);
+  }
 }
+
+// elke 5 seconden vernieuwen
 setInterval(refreshData,5000);
 refreshData();
 </script>
-</body></html>
+</body>
+</html>
