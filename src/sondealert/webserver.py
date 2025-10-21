@@ -3,15 +3,16 @@ import os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs
 from html import escape
-from .config import load_settings, save_settings, BASE_DIR
+from .config import load_settings, save_settings
 from .gps import gps_have, gps_lat, gps_lon
 from .proximity import nearest_sondes, nearest_lock
 
+# Webmap
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
 class WebHandler(SimpleHTTPRequestHandler):
     def log_message(self, *args):
-        # stil houden in console
+        # stilhouden in console
         pass
 
     def _send_json(self, obj, code=200):
@@ -37,12 +38,15 @@ class WebHandler(SimpleHTTPRequestHandler):
 
     # --------- GET ---------
     def do_GET(self):
+        # Dashboard
         if self.path == "/" or self.path.startswith("/index"):
             return self._send_html_file("index.html")
 
+        # Instellingenpagina
         if self.path == "/settings":
             return self._send_html_file("settings.html")
 
+        # JSON-data voor de kaart
         if self.path == "/nearest.json":
             with nearest_lock:
                 items = list(nearest_sondes)
@@ -56,29 +60,41 @@ class WebHandler(SimpleHTTPRequestHandler):
             }
             return self._send_json(payload)
 
-        # alles onder /static/ uit web-map serveren
+        # -------- Static files (CSS, JS, icons etc.) --------
         if self.path.startswith("/static/"):
-            path = os.path.join(WEB_DIR, self.path[len("/static/"):])
-            if os.path.isfile(path):
-                with open(path, "rb") as f:
+            # Belangrijkste fix: voeg 'static/' toe in het pad
+            static_path = os.path.join(WEB_DIR, "static", self.path[len("/static/"):])
+            if os.path.isfile(static_path):
+                with open(static_path, "rb") as f:
                     data = f.read()
-                self.send_response(200)
-                # Content-Type minimaal correct proberen
-                if path.endswith(".js"):
-                    self.send_header("Content-Type", "application/javascript")
-                elif path.endswith(".css"):
-                    self.send_header("Content-Type", "text/css")
+
+                # Content-type bepalen
+                if static_path.endswith(".js"):
+                    ctype = "application/javascript"
+                elif static_path.endswith(".css"):
+                    ctype = "text/css"
+                elif static_path.endswith(".png"):
+                    ctype = "image/png"
+                elif static_path.endswith(".jpg") or static_path.endswith(".jpeg"):
+                    ctype = "image/jpeg"
+                elif static_path.endswith(".svg"):
+                    ctype = "image/svg+xml"
                 else:
-                    self.send_header("Content-Type", "application/octet-stream")
+                    ctype = "application/octet-stream"
+
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
                 return
 
+        # Anders: 404
         self.send_error(404, "Not Found")
 
     # --------- POST ---------
     def do_POST(self):
+        # Instellingen opslaan
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length).decode("utf-8")
@@ -88,14 +104,12 @@ class WebHandler(SimpleHTTPRequestHandler):
                 s["NEAR_THRESHOLD_M"] = float(params.get("NEAR_THRESHOLD_M", [s["NEAR_THRESHOLD_M"]])[0])
                 s["MONTHS_BACK"] = int(params.get("MONTHS_BACK", [s["MONTHS_BACK"]])[0])
                 s["ALT_MAX_M"] = float(params.get("ALT_MAX_M", [s["ALT_MAX_M"]])[0])
-                # CSV in één veld
                 status_keep = params.get("STATUS_KEEP", ["UNKNOWN,NEED ATTENTION"])[0]
                 s["STATUS_KEEP"] = [x.strip().upper() for x in status_keep.split(",") if x.strip()]
-                # Launch filters als multiline
                 launch_filters = params.get("LAUNCH_FILTERS", ["DE BILT (NL)\nDE BILT"])[0]
                 s["LAUNCH_FILTERS"] = [ln.strip() for ln in launch_filters.splitlines() if ln.strip()]
                 s["BUZZER_ENABLED"] = "BUZZER_ENABLED" in params
-                # (optioneel) bind host/port
+
                 if "BIND_HOST" in params:
                     s["BIND_HOST"] = params.get("BIND_HOST", [s.get("BIND_HOST", "0.0.0.0")])[0]
                 if "BIND_PORT" in params:
@@ -109,6 +123,7 @@ class WebHandler(SimpleHTTPRequestHandler):
 
         self.send_error(404, "Not Found")
 
+# --------- Start Webserver ---------
 def start(host="0.0.0.0", port=8080):
     httpd = ThreadingHTTPServer((host, port), WebHandler)
     print(f"[WEB] bereikbaar op http://{host}:{port}/")
