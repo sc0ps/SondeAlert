@@ -1,49 +1,63 @@
-import threading, time
-from .config import load_settings, save_settings
-from .radiosondy import build_filtered_list, need_update
-from . import gps as gps_module
-from .proximity import start_proximity
-from .webserver import start as start_web
+# src/sondealert/main.py
+import threading
+import time
+import signal
+import sys
 
-def updater(settings: dict):
-    """Controleer regelmatig of radiosondy-data vernieuwd moet worden"""
-    while True:
-        try:
-            if need_update(settings):
-                print("[UPDATER] Nieuwe download nodig — bouw lijst...")
-                build_filtered_list(settings)
-        except Exception as e:
-            print("[UPDATER] Fout:", e)
-        time.sleep(int(settings["UPDATE_HOURS"]) * 3600)
+from . import gps, proximity, radiosondy, webserver, config
+from .utils import get_logger
 
+logger = get_logger("main")
+
+# === HOOFDSTARTUP ===
 def main():
-    print("=== SondeAlert gestart ===")
-    settings = load_settings()
-    save_settings(settings)  # zorg dat settings.json bestaat
+    logger.info("=== SondeAlert gestart ===")
 
-    # eerste dataset laden of aanmaken
     try:
-        if need_update(settings):
-            print("[INIT] Download start...")
-            build_filtered_list(settings)
+        # 1️⃣ Laad instellingen
+        settings = config.load_settings()
+        logger.info("Instellingen geladen: %s", settings)
+
+        # 2️⃣ Update radiosonde-lijst (indien verouderd)
+        if radiosondy.needs_update():
+            logger.info("Radiosonde-lijst verouderd — nieuwe download gestart.")
+            radiosondy.update_sonde_list()
         else:
-            print("[INIT] Bestaande lijst is nog actueel.")
-    except Exception as e:
-        print("[INIT] Fout bij eerste build:", e)
+            logger.info("Bestaande lijst is nog actueel.")
 
-    # Start alle componenten in threads
-    gps_module.start(settings)
-    start_proximity(settings, gps_module)
-    start_web(settings)
+        # 3️⃣ Start de GPS-thread
+        gps_thread = threading.Thread(target=gps.start_gps_listener, daemon=True)
+        gps_thread.start()
+        logger.info("GPS-thread gestart.")
 
-    threading.Thread(target=updater, args=(settings,), daemon=True).start()
+        # 4️⃣ Start de proximity-thread
+        prox_thread = threading.Thread(target=proximity.run, daemon=True)
+        prox_thread.start()
+        logger.info("Proximity-thread gestart.")
 
-    # Hoofdlus blijft actief
-    try:
+        # 5️⃣ Start de webserver
+        webserver.start_server()
+        logger.info("Webserver gestart en bereikbaar.")
+
+        # 6️⃣ Houd het hoofdproces actief
         while True:
             time.sleep(1)
+
     except KeyboardInterrupt:
-        print("Stop SondeAlert.")
+        logger.warning("SondeAlert handmatig gestopt (Ctrl+C).")
+        sys.exit(0)
+    except Exception as e:
+        logger.exception("Onverwachte fout in hoofdloop: %s", e)
+        sys.exit(1)
+
+
+# === SIGNAALHANDLING (Docker-friendly) ===
+def signal_handler(sig, frame):
+    logger.info("SondeAlert stopt door signaal (%s).", sig)
+    sys.exit(0)
+
 
 if __name__ == "__main__":
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
     main()
