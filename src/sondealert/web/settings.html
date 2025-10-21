@@ -116,6 +116,16 @@ button.back:hover {
   background:var(--accent-hover);
   color:#001220;
 }
+#msg {
+  display:none;
+  text-align:center;
+  background:rgba(0,255,100,0.2);
+  color:#00e676;
+  padding:10px;
+  border-radius:10px;
+  margin-top:10px;
+  font-weight:600;
+}
 footer {
   text-align:center;
   padding:14px 0;
@@ -137,7 +147,7 @@ footer {
 <div class="container">
   <div class="card">
     <h3>System Settings</h3>
-    <form method="POST" action="/settings">
+    <form id="settingsForm">
       <label><input type="checkbox" name="BUZZER_ENABLED" id="buzz"> Enable buzzer alert</label>
 
       <label for="thr">NEAR_THRESHOLD_M (m):</label>
@@ -161,11 +171,30 @@ DE BILT</textarea>
         <button type="button" class="back" onclick="window.location.href='/'">Back</button>
       </div>
     </form>
+    <div id="msg">Settings saved ✓</div>
   </div>
 </div>
 
 <footer>
   <p>© 2025 SondeAlert — Developed by Scops Owl Designs</p>
 </footer>
+
+<script>
+document.getElementById("settingsForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  const form = e.target;
+  const data = new FormData(form);
+  const resp = await fetch("/settings", { method: "POST", body: data });
+  const j = await resp.json();
+
+  const msg = document.getElementById("msg");
+  msg.textContent = j.ok ? "✅ Settings saved successfully" : "⚠️ Failed to save settings";
+  msg.style.display = "block";
+  msg.style.background = j.ok ? "rgba(0,255,100,0.2)" : "rgba(255,100,0,0.2)";
+  msg.style.color = j.ok ? "#00e676" : "#ff7043";
+
+  setTimeout(() => { msg.style.display = "none"; }, 2500);
+});
+</script>
 </body>
 </html>
