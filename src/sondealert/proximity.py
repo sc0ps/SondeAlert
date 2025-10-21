@@ -1,4 +1,4 @@
-import math, time
+import math, time, threading
 from .config import load_settings
 from .utils import state_lock
 
@@ -83,3 +83,13 @@ def get_status():
             "nearest": nearest,
             "distance_m": nearest_d_m
         }
+
+
+# ----------------------------
+# Startfunctie voor de proximity-thread
+# ----------------------------
+def start_proximity():
+    """Start de proximity-thread als achtergrondproces."""
+    t = threading.Thread(target=nearest_loop, daemon=True)
+    t.start()
+    print("[PROX] Proximity-thread gestart.")
