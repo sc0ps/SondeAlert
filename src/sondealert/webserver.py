@@ -1,127 +1,119 @@
-import json, socket, threading, urllib.parse, os
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from .utils import state_lock
-from . import gps as gps_module
-from . import proximity as prox
-from .config import save_settings, load_settings
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse
+from .utils import state_lock, get_logger
+from .gps import gps_data
 
-# map met statische webpagina’s
-WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
+logger = get_logger("web")
+
+SETTINGS_FILE = "data/settings.json"
+SONDES_FILE = "data/sondes.json"
+HOST = "0.0.0.0"
+PORT = 8080
 
 
-class WebHandler(SimpleHTTPRequestHandler):
-    def log_message(self, *a):
-        pass  # geen console spam
+class SondeHandler(BaseHTTPRequestHandler):
+    """Eenvoudige HTTP-handler voor SondeAlert."""
 
-    # ----------------------------
-    def _serve_file(self, filename, mime="text/html"):
-        path = os.path.join(WEB_DIR, filename)
-        if not os.path.exists(path):
-            self.send_error(404)
-            return
-        with open(path, "rb") as f:
-            data = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", f"{mime}; charset=utf-8")
-        self.send_header("Content-Length", str(len(data)))
+    def _set_headers(self, status=200, content_type="application/json"):
+        self.send_response(status)
+        self.send_header("Content-type", content_type)
         self.end_headers()
-        self.wfile.write(data)
 
-    # ----------------------------
-    def _ok_json(self, obj: dict):
-        data = json.dumps(obj).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-        self.end_headers()
-        self.wfile.write(data)
-
-    # ----------------------------
+    # === GET-requests ===
     def do_GET(self):
-        path = self.path.split("?")[0]
+        try:
+            parsed = urlparse(self.path)
+            path = parsed.path
 
-        # ---------- Dashboard ----------
-        if path in ("/", "/index.html"):
-            self._serve_file("index.html")
-            return
+            # --- hoofdpagina ---
+            if path in ["/", "/index.html"]:
+                self._set_headers(200, "text/html")
+                lat = gps_data.get("lat")
+                lon = gps_data.get("lon")
+                html = f"""
+                <html>
+                <head><title>SondeAlert Dashboard</title></head>
+                <body>
+                    <h2>🚀 SondeAlert Webinterface</h2>
+                    <p><b>Laatste GPS:</b> {lat}, {lon}</p>
+                    <p><a href='/nearest.json'>📡 Toon sondelijst (JSON)</a></p>
+                    <p><a href='/settings'>⚙️ Bekijk instellingen</a></p>
+                </body>
+                </html>
+                """
+                self.wfile.write(html.encode("utf-8"))
+                return
 
-        # ---------- Instellingenpagina ----------
-        elif path == "/settings":
-            self._serve_file("settings.html")
-            return
+            # --- sondes.json ---
+            elif path == "/nearest.json":
+                self._set_headers(200)
+                try:
+                    with open(SONDES_FILE, "r", encoding="utf-8") as f:
+                        sondes = json.load(f)
+                    self.wfile.write(json.dumps(sondes, indent=2).encode("utf-8"))
+                except FileNotFoundError:
+                    self.wfile.write(b"[]")
+                return
 
-        # ---------- Actuele instellingen ----------
-        elif path == "/get_settings":
-            with state_lock:
-                s = load_settings()
-            self._ok_json(s)
-            return
+            # --- instellingen lezen ---
+            elif path == "/settings":
+                self._set_headers(200)
+                try:
+                    with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                        settings = json.load(f)
+                    self.wfile.write(json.dumps(settings, indent=2).encode("utf-8"))
+                except FileNotFoundError:
+                    self.wfile.write(b"{}")
+                return
 
-        # ---------- JSON endpoint (GPS + sonde) ----------
-        elif path == "/nearest.json":
-            with state_lock:
-                n, d = prox.nearest, prox.nearest_d_m
-                have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
-                sondes = prox.in_range
-            self._ok_json({
-                "gps": {"have": have, "lat": glat if have else None, "lon": glon if have else None},
-                "nearest": n,
-                "distance_m": d,
-                "in_range": sondes
-            })
-            return
+            # --- onbekende route ---
+            else:
+                self._set_headers(404)
+                self.wfile.write(b'{"error":"Not Found"}')
 
-        # ---------- Onbekend pad ----------
-        else:
-            self.send_error(404)
+        except Exception as e:
+            logger.exception("Fout bij GET: %s", e)
+            self._set_headers(500)
+            self.wfile.write(b'{"error":"Internal Server Error"}')
 
-    # ----------------------------
+    # === POST-requests ===
     def do_POST(self):
-        if self.path == "/settings":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode()
-            data = urllib.parse.parse_qs(body)
+        """Ontvang nieuwe instellingen via POST /settings"""
+        try:
+            parsed = urlparse(self.path)
+            if parsed.path == "/settings":
+                content_length = int(self.headers.get("Content-Length", 0))
+                body = self.rfile.read(content_length)
+                new_settings = json.loads(body.decode("utf-8"))
 
-            with state_lock:
-                s = load_settings()
-                s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
+                with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                    json.dump(new_settings, f, indent=2)
 
-                for key in ("NEAR_THRESHOLD_M", "MONTHS_BACK", "ALT_MAX_M", "UPDATE_HOURS"):
-                    if key in data:
-                        try:
-                            val = data[key][0]
-                            s[key] = float(val) if "." in val else int(val)
-                        except Exception:
-                            pass
+                logger.info("Instellingen bijgewerkt via webinterface: %s", new_settings)
+                self._set_headers(200)
+                self.wfile.write(b'{"status":"OK"}')
+            else:
+                self._set_headers(404)
+                self.wfile.write(b'{"error":"Not Found"}')
 
-                if "STATUS_KEEP" in data:
-                    s["STATUS_KEEP"] = [
-                        x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()
-                    ]
-
-                if "LAUNCH_FILTERS" in data:
-                    s["LAUNCH_FILTERS"] = [
-                        x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()
-                    ]
-
-                save_settings(s)
-                print("[SETTINGS] Bestand opgeslagen:", json.dumps(s, indent=2))
-
-                # direct opnieuw in geheugen laden
-                prox.settings = load_settings()
-                print("[SETTINGS] Geheugenwaarden vernieuwd")
-
-            self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
-        else:
-            self.send_error(404)
+        except Exception as e:
+            logger.exception("Fout bij POST: %s", e)
+            self._set_headers(500)
+            self.wfile.write(b'{"error":"Internal Server Error"}')
 
 
-# ----------------------------
-def start(settings: dict):
-    """Start de ingebouwde webserver"""
-    bind_host = settings.get("BIND_HOST", "0.0.0.0")
-    bind_port = int(settings.get("BIND_PORT", 8080))
-    httpd = ThreadingHTTPServer((bind_host, bind_port), WebHandler)
-    ip = socket.gethostbyname(socket.gethostname())
-    print(f"[WEB] bereikbaar op http://{ip}:{bind_port}/")
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+def start_server(host=HOST, port=PORT):
+    """Start de webserver en blijf luisteren tot afsluiting."""
+    server = HTTPServer((host, port), SondeHandler)
+    logger.info("Webserver gestart op http://%s:%d/", host, port)
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        logger.warning("Webserver gestopt (Ctrl+C).")
+    except Exception as e:
+        logger.exception("Fout in webserver: %s", e)
+    finally:
+        server.server_close()
+        logger.info("Webserver afgesloten.")

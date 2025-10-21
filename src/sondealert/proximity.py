@@ -15,14 +15,15 @@ def load_sondes():
     try:
         with open(SONDES_JSON, "r", encoding="utf-8") as f:
             sondes = json.load(f)
-            logger.info("%d sondes geladen uit %s", len(sondes), Sondes_JSON)
+            logger.info("%d sondes geladen uit %s", len(sondes), SNDES_JSON)
             return sondes
     except FileNotFoundError:
-        logger.warning("Bestand %s niet gevonden — geen sondes geladen.", Sondes_JSON)
+        logger.warning("Bestand %s niet gevonden — geen sondes geladen.", SNDES_JSON)
         return []
     except Exception as e:
         logger.exception("Fout bij laden sondelijst: %s", e)
         return []
+
 
 
 def find_nearby_sondes(sondes, lat, lon, max_distance_km):
