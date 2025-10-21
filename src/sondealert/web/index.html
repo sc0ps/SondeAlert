@@ -1,159 +1,88 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<meta charset="utf-8">
-<title>SondeAlert</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<style>
-:root{
-  --bg1:#0a2540;
-  --bg2:#001220;
-  --accent:#4fc3f7;
-  --card:rgba(255,255,255,0.08);
-  --text:#fff;
-  --muted:#aab;
-}
-body{
-  margin:0;
-  min-height:100vh;
-  background:linear-gradient(180deg,var(--bg1),var(--bg2));
-  background-attachment:fixed;
-  font-family:system-ui,Segoe UI,Arial,sans-serif;
-  color:var(--text);
-}
-.wrap{max-width:900px;margin:20px auto;padding:0 12px;}
-.card{
-  background:var(--card);
-  padding:20px;
-  border-radius:12px;
-  box-shadow:0 0 15px rgba(0,0,0,0.3);
-  margin-bottom:12px;
-}
-h1{color:var(--accent);}
-button.tab{
-  background:transparent;
-  color:var(--accent);
-  border:1px solid var(--accent);
-  padding:6px 12px;
-  border-radius:8px;
-  margin-right:6px;
-  cursor:pointer;
-  font-weight:600;
-}
-button.tab.active{background:var(--accent);color:#001220;}
-.badge{
-  display:inline-block;
-  padding:2px 8px;
-  border:1px solid var(--accent);
-  border-radius:999px;
-  color:var(--accent);
-}
-#map{
-  height:420px;
-  border-radius:10px;
-  margin-top:12px;
-}
-table{
-  width:100%;
-  border-collapse:collapse;
-  margin-top:6px;
-}
-th,td{
-  text-align:left;
-  padding:6px 4px;
-  border-bottom:1px solid rgba(255,255,255,0.1);
-}
-</style>
+  <meta charset="UTF-8" />
+  <title>🚀 SondeAlert Live Kaart</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; width: 100%; }
+    #map { height: 100%; width: 100%; }
+    .leaflet-popup-content { font-size: 14px; }
+    .status-UNKNOWN { color: #2b7bff; }
+    .status-NEED_ATTENTION { color: #ff3b30; font-weight: bold; }
+    .header {
+      background-color: #1565c0;
+      color: white;
+      font-size: 18px;
+      font-weight: 500;
+      padding: 8px 12px;
+      text-align: center;
+      font-family: system-ui, sans-serif;
+    }
+    .settings-link {
+      position: absolute;
+      top: 10px;
+      right: 15px;
+      background: white;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 14px;
+      text-decoration: none;
+      color: #1565c0;
+      border: 1px solid #ccc;
+    }
+  </style>
 </head>
 <body>
-<div class="wrap">
-  <h1>SondeAlert</h1>
-  <div>
-    <button class="tab active" onclick="window.location.href='/'">Dashboard</button>
-    <button class="tab" onclick="window.location.href='/settings'">Instellingen</button>
+  <div class="header">
+    🚀 SondeAlert Live Kaart
+    <a class="settings-link" href="/settings.html">⚙ Instellingen</a>
   </div>
+  <div id="map"></div>
 
-  <div class="card">
-    <div id="gpsStatus">GPS: laden...</div>
-  </div>
+  <script>
+    const map = L.map("map").setView([52.0607, 4.2664], 12);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "&copy; OpenStreetMap contributors",
+    }).addTo(map);
 
-  <div class="card">
-    <h3>Sondes binnen bereik</h3>
-    <div id="nearest">Laden...</div>
-    <div id="map"></div>
-  </div>
-</div>
+    const gpsMarker = L.marker([52.0607, 4.2664]).addTo(map).bindPopup("GPS-locatie");
+    let sondeMarkers = [];
 
-<script>
-let map = L.map('map').setView([52.1,5.2], 7);
-L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(map);
-
-let my = null;
-let line = null;
-let sondeMarkers = [];
-
-async function refreshData(){
-  try{
-    const r = await fetch('/nearest.json?' + Date.now());
-    const s = await r.json();
-    const gps = s.gps;
-
-    // GPS-status
-    document.getElementById('gpsStatus').innerHTML = gps.have ?
-      `GPS: <span class='badge'>OK</span> &nbsp; Positie: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>` :
-      "GPS: <span class='badge' style='color:red;border-color:red;'>OFF</span>";
-
-    // Stop als er geen GPS is
-    if(!gps.have) return;
-
-    // Update eigen positie
-    const lat = gps.lat, lon = gps.lon;
-    if(!my) my = L.marker([lat,lon]).addTo(map).bindPopup('Jij');
-    else my.setLatLng([lat,lon]);
-
-    // Alle sondes binnen bereik
-    const lijst = s.in_range || [];
-    document.getElementById('nearest').innerHTML =
-      lijst.length
-        ? `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th><th>Laatste</th><th>Locatie</th></tr>${
-            lijst.map(x =>
-              `<tr><td>${x.id}</td><td>${x.status}</td><td>${(x.distance_m/1000).toFixed(2)} km</td>
-              <td>${parseInt(x.alt)} m</td><td>${x.last}</td><td>${x.place}</td></tr>`
-            ).join("")
-          }</table>`
-        : "Geen sonde binnen bereik.";
-
-    // Oude markers verwijderen
-    sondeMarkers.forEach(m => map.removeLayer(m));
-    sondeMarkers = [];
-
-    // Nieuwe markers toevoegen
-    lijst.forEach(x => {
-      const m = L.marker([x.lat, x.lon], {
-        icon: L.icon({
-          iconUrl: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
-          iconSize: [22,22]
-        })
-      }).addTo(map).bindPopup(`Sonde ${x.id}<br>${(x.distance_m/1000).toFixed(2)} km`);
-      sondeMarkers.push(m);
-    });
-
-    // Lijn naar dichtste sonde
-    const n = s.nearest, d = s.distance_m;
-    if(line) line.remove();
-    if(n && d){
-      line = L.polyline([[lat,lon],[n.lat,n.lon]],{color:'red'}).addTo(map);
-      map.fitBounds([[lat,lon],[n.lat,n.lon]],{padding:[40,40]});
+    async function updateData() {
+      try {
+        const gps = await fetch("/gps.json").then((r) => r.json());
+        const sondes = await fetch("/nearest.json").then((r) => r.json());
+        if (gps.lat && gps.lon) gpsMarker.setLatLng([gps.lat, gps.lon]);
+        sondeMarkers.forEach((m) => map.removeLayer(m));
+        sondeMarkers = [];
+        sondes.forEach((s) => {
+          const color = s.status === "NEED ATTENTION" ? "red" : "blue";
+          const marker = L.circleMarker([s.lat, s.lon], {
+            radius: 8, color, fillColor: color, fillOpacity: 0.8
+          }).addTo(map);
+          marker.bindPopup(`
+            <b>${s.id}</b><br/>
+            📍 ${s.place}<br/>
+            ⏱️ ${s.last}<br/>
+            📡 ${s.distance} m<br/>
+            🏔️ ${s.alt} m<br/>
+            <span class="status-${s.status.replace(" ", "_")}">${s.status}</span>
+          `);
+          sondeMarkers.push(marker);
+        });
+      } catch (err) {
+        console.error("Update fout:", err);
+      }
     }
-  }catch(e){
-    console.error("update error",e);
-  }
-}
 
-// elke 5 seconden vernieuwen
-setInterval(refreshData,5000);
-refreshData();
-</script>
+    updateData();
+    setInterval(updateData, 5000);
+  </script>
 </body>
 </html>

@@ -1,76 +1,66 @@
 <!DOCTYPE html>
 <html lang="nl">
 <head>
-<meta charset="utf-8">
-<title>Instellingen – SondeAlert</title>
-<style>
-body{margin:0;min-height:100vh;background:linear-gradient(180deg,#0a2540,#001220);
-font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff;}
-.wrap{max-width:600px;margin:20px auto;padding:0 12px;}
-.card{background:rgba(255,255,255,0.08);padding:20px;border-radius:12px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);}
-label{display:block;margin-top:10px;font-weight:600;color:#4fc3f7;}
-input,textarea{width:100%;padding:8px;border:none;border-radius:8px;
-background:rgba(255,255,255,0.1);color:#fff;}
-button{margin-top:16px;padding:10px 16px;border:none;border-radius:8px;
-font-weight:600;cursor:pointer;}
-.save{background:#4fc3f7;color:#001220;}
-.back{background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;margin-left:8px;}
-</style>
+  <meta charset="UTF-8" />
+  <title>⚙️ SondeAlert Instellingen</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { font-family: system-ui, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
+    h2 { color: #1565c0; }
+    label { display: block; margin-top: 10px; font-weight: 600; }
+    input { width: 100%; padding: 6px; border-radius: 4px; border: 1px solid #ccc; }
+    button {
+      margin-top: 20px; background: #1565c0; color: white; border: none;
+      padding: 10px 14px; border-radius: 6px; cursor: pointer;
+    }
+    button:hover { background: #0d47a1; }
+    .back { display: inline-block; margin-bottom: 20px; color: #1565c0; text-decoration: none; }
+  </style>
 </head>
 <body>
-<div class="wrap">
-<h1>Instellingen</h1>
-<form id="settingsForm">
-<label><input type="checkbox" name="BUZZER_ENABLED"> Buzzer actief</label>
-<label>NEAR_THRESHOLD_M (m):</label>
-<input name="NEAR_THRESHOLD_M" value="">
-<label>MONTHS_BACK:</label>
-<input name="MONTHS_BACK" value="">
-<label>ALT_MAX_M:</label>
-<input name="ALT_MAX_M" value="">
-<label>STATUS_KEEP (komma gescheiden):</label>
-<input name="STATUS_KEEP" value="">
-<label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name="LAUNCH_FILTERS" rows="4"></textarea>
-<div>
-<button type="submit" class="save">Opslaan</button>
-<button type="button" class="back" onclick="window.location.href='/'">Terug</button>
-</div>
-</form>
-</div>
+  <a href="/" class="back">⬅ Terug naar kaart</a>
+  <h2>⚙️ Instellingen</h2>
+  <form id="settingsForm">
+    <label>Maximale hoogte (ALT_MAX_M)</label>
+    <input type="number" id="ALT_MAX_M" name="ALT_MAX_M" />
 
-<script>
-async function loadSettings() {
-  try {
-    const res = await fetch('/get_settings');
-    const s = await res.json();
-    document.querySelector('[name="BUZZER_ENABLED"]').checked = s.BUZZER_ENABLED || false;
-    document.querySelector('[name="NEAR_THRESHOLD_M"]').value = s.NEAR_THRESHOLD_M || 15000;
-    document.querySelector('[name="MONTHS_BACK"]').value = s.MONTHS_BACK || 24;
-    document.querySelector('[name="ALT_MAX_M"]').value = s.ALT_MAX_M || 600;
-    document.querySelector('[name="STATUS_KEEP"]').value = (s.STATUS_KEEP || []).join(',');
-    document.querySelector('[name="LAUNCH_FILTERS"]').value = (s.LAUNCH_FILTERS || []).join('\n');
-  } catch (e) {
-    console.error('Kon instellingen niet laden:', e);
-  }
-}
+    <label>Maximale afstand (NEAR_THRESHOLD_M)</label>
+    <input type="number" id="NEAR_THRESHOLD_M" name="NEAR_THRESHOLD_M" />
 
-document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const formData = new URLSearchParams(new FormData(form));  // << fix hier!
-  const res = await fetch('/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formData.toString()
-  });
-  const j = await res.json();
-  alert(j.msg || 'Instellingen opgeslagen ✅');
-  loadSettings(); // herlaad na opslaan
-});
+    <label>Update-interval (UPDATE_HOURS)</label>
+    <input type="number" id="UPDATE_HOURS" name="UPDATE_HOURS" />
 
-loadSettings(); // laad bij start
-</script>
+    <label>Buzzer aan/uit</label>
+    <select id="BUZZER_ENABLED" name="BUZZER_ENABLED">
+      <option value="true">Aan</option>
+      <option value="false">Uit</option>
+    </select>
+
+    <button type="submit">💾 Opslaan</button>
+  </form>
+
+  <script>
+    async function loadSettings() {
+      const s = await fetch("/settings.json").then(r => r.json());
+      for (const k in s) {
+        const el = document.getElementById(k);
+        if (el) el.value = s[k];
+      }
+    }
+
+    document.getElementById("settingsForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const data = Object.fromEntries(new FormData(e.target).entries());
+      data.BUZZER_ENABLED = data.BUZZER_ENABLED === "true";
+      await fetch("/save_settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+      alert("Instellingen opgeslagen!");
+    });
+
+    loadSettings();
+  </script>
 </body>
 </html>

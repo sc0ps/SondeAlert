@@ -1,96 +1,76 @@
 import json
-import threading
+import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import parse_qs, urlparse
 from pathlib import Path
-from .gps import gps_data
+from threading import Thread
+
+from .gps import get_last_position
 from .proximity import get_nearby_sondes
-from .utils import get_logger
+from .config import SETTINGS_FILE, load_settings, save_settings
 
-logger = get_logger("web")
+log = logging.getLogger("web")
 
-SETTINGS_FILE = Path("/app/data/settings.json")
+WEB_DIR = Path(__file__).parent / "web"
 
-# Standaardinstellingen
-DEFAULT_SETTINGS = {
-    "NEAR_THRESHOLD_M": 15000,
-    "ALT_MAX_M": 600,
-    "UPDATE_HOURS": 24,
-    "BUZZER_ENABLED": False
-}
+class SondeAlertHandler(BaseHTTPRequestHandler):
 
-
-def load_settings():
-    if SETTINGS_FILE.exists():
-        with open(SETTINGS_FILE, "r") as f:
-            return json.load(f)
-    else:
-        SETTINGS_FILE.write_text(json.dumps(DEFAULT_SETTINGS, indent=2))
-        return DEFAULT_SETTINGS
-
-
-def save_settings(data):
-    with open(SETTINGS_FILE, "w") as f:
-        json.dump(data, f, indent=2)
-
-
-settings = load_settings()
-
-
-class WebHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        parsed = urlparse(self.path)
-        if parsed.path in ["/", "/index.html"]:
-            self.serve_file("/app/src/sondealert/templates/index.html", "text/html")
-        elif parsed.path == "/settings":
-            self.serve_file("/app/src/sondealert/templates/settings.html", "text/html")
-        elif parsed.path == "/gps.json":
-            self.json_response(gps_data)
-        elif parsed.path == "/nearest.json":
-            nearby = get_nearby_sondes(gps_data, settings)
-            self.json_response(nearby)
-        elif parsed.path == "/api/settings":
-            self.json_response(settings)
-        else:
-            self.send_error(404, "Not Found")
-
-    def do_POST(self):
-        if self.path == "/api/settings":
-            length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            params = parse_qs(body)
-            for key in settings:
-                if key in params:
-                    val = params[key][0]
-                    if val.lower() in ["true", "false"]:
-                        settings[key] = val.lower() == "true"
-                    elif val.isdigit():
-                        settings[key] = int(val)
-            save_settings(settings)
-            logger.info("Instellingen bijgewerkt: %s", settings)
-            self.json_response({"status": "ok", "settings": settings})
-        else:
-            self.send_error(404, "Not Found")
-
-    def serve_file(self, path, mime):
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            self.send_response(200)
-            self.send_header("Content-type", mime)
-            self.end_headers()
-            self.wfile.write(content.encode("utf-8"))
-        except FileNotFoundError:
-            self.send_error(404, "File not found")
-
-    def json_response(self, data):
-        self.send_response(200)
-        self.send_header("Content-type", "application/json")
+    def _send_json(self, data, code=200):
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
+    def _serve_file(self, filename: str):
+        file_path = WEB_DIR / filename
+        if file_path.exists():
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(file_path.read_bytes())
+        else:
+            self.send_error(404, "File not found")
 
-def start_server(host="0.0.0.0", port=8080):
-    httpd = HTTPServer((host, port), WebHandler)
-    logger.info("Webserver gestart op http://%s:%d/", host, port)
-    httpd.serve_forever()
+    def do_GET(self):
+        path = self.path.split("?")[0]
+
+        if path in ["/", "/index.html"]:
+            self._serve_file("index.html")
+
+        elif path == "/settings.html":
+            self._serve_file("settings.html")
+
+        elif path == "/gps.json":
+            lat, lon = get_last_position()
+            self._send_json({"lat": lat, "lon": lon})
+
+        elif path == "/nearest.json":
+            nearby = get_nearby_sondes()
+            self._send_json(nearby)
+
+        elif path == "/settings.json":
+            settings = load_settings()
+            self._send_json(settings)
+
+        else:
+            self.send_error(404, "File not found")
+
+    def do_POST(self):
+        if self.path == "/save_settings":
+            length = int(self.headers.get("Content-Length", 0))
+            raw = self.rfile.read(length)
+            try:
+                data = json.loads(raw)
+                save_settings(data)
+                self._send_json({"status": "ok", "saved": data})
+                log.info("Instellingen bijgewerkt via webinterface.")
+            except Exception as e:
+                log.error(f"Fout bij opslaan instellingen: {e}")
+                self._send_json({"error": str(e)}, code=500)
+        else:
+            self.send_error(404, "Onbekende POST-route")
+
+
+def start_webserver(bind_host, bind_port):
+    server = HTTPServer((bind_host, bind_port), SondeAlertHandler)
+    log.info(f"Webserver gestart op http://{bind_host}:{bind_port}/")
+    Thread(target=server.serve_forever, daemon=True).start()
