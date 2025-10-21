@@ -26,7 +26,7 @@ def main():
             logger.info("Bestaande lijst is nog actueel.")
 
         # 3️⃣ Start de GPS-thread
-        gps_thread = threading.Thread(target=gps.start_gps_listener, daemon=True)
+        gps_thread = threading.Thread(target=gps.start_gps_thread, daemon=True)
         gps_thread.start()
         logger.info("GPS-thread gestart.")
 
