@@ -149,8 +149,9 @@ async function refreshData() {
 
     // GPS status
     document.getElementById('gpsStatus').innerHTML = gps.have
-      ? `GPS: <span class="badge">OK</span> &nbsp; Position: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>`
-      : 'GPS: <span class="badge" style="color:red;border-color:red;">OFF</span>';
+      ? `<b style="color:#00c853;">GPS: OK</b> &nbsp; Position: <b>${gps.lat.toFixed(5)}, ${gps.lon.toFixed(5)}</b>`
+      : `<b style="color:#ff5252;">GPS: OFF</b>`;
+
 
     if (!gps.have) return;
 
