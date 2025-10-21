@@ -24,16 +24,15 @@ font-weight:600;cursor:pointer;}
 <form id="settingsForm">
 <label><input type="checkbox" name="BUZZER_ENABLED"> Buzzer actief</label>
 <label>NEAR_THRESHOLD_M (m):</label>
-<input name="NEAR_THRESHOLD_M" value="15000">
+<input name="NEAR_THRESHOLD_M" value="">
 <label>MONTHS_BACK:</label>
-<input name="MONTHS_BACK" value="24">
+<input name="MONTHS_BACK" value="">
 <label>ALT_MAX_M:</label>
-<input name="ALT_MAX_M" value="600">
+<input name="ALT_MAX_M" value="">
 <label>STATUS_KEEP (komma gescheiden):</label>
-<input name="STATUS_KEEP" value="UNKNOWN,NEED ATTENTION">
+<input name="STATUS_KEEP" value="">
 <label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name="LAUNCH_FILTERS" rows="4">DE BILT (NL)
-DE BILT</textarea>
+<textarea name="LAUNCH_FILTERS" rows="4"></textarea>
 <div>
 <button type="submit" class="save">Opslaan</button>
 <button type="button" class="back" onclick="window.location.href='/'">Terug</button>
@@ -42,13 +41,31 @@ DE BILT</textarea>
 </div>
 
 <script>
+async function loadSettings() {
+  try {
+    const res = await fetch('/get_settings');
+    const s = await res.json();
+    document.querySelector('[name="BUZZER_ENABLED"]').checked = s.BUZZER_ENABLED || false;
+    document.querySelector('[name="NEAR_THRESHOLD_M"]').value = s.NEAR_THRESHOLD_M || 15000;
+    document.querySelector('[name="MONTHS_BACK"]').value = s.MONTHS_BACK || 24;
+    document.querySelector('[name="ALT_MAX_M"]').value = s.ALT_MAX_M || 600;
+    document.querySelector('[name="STATUS_KEEP"]').value = (s.STATUS_KEEP || []).join(',');
+    document.querySelector('[name="LAUNCH_FILTERS"]').value = (s.LAUNCH_FILTERS || []).join('\n');
+  } catch (e) {
+    console.error('Kon instellingen niet laden:', e);
+  }
+}
+
 document.getElementById('settingsForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const formData = new FormData(e.target);
   const res = await fetch('/settings', {method:'POST', body: formData});
   const j = await res.json();
   alert(j.msg || 'Instellingen opgeslagen ✅');
+  loadSettings(); // vernieuw na opslaan
 });
+
+loadSettings(); // automatisch bij openen
 </script>
 </body>
 </html>
