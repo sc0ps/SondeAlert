@@ -1,14 +1,12 @@
-import math, time, threading, json, os
+import math, time, threading
 from .config import load_settings
 from .utils import state_lock
 
-# ----------------------------
-# Globale statusvariabelen
-# ----------------------------
+# Gedeelde statusvariabelen
 gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 nearest, nearest_d_m = None, None
-in_range = []     # sondes binnen drempelafstand
-items = []        # alle sondes uit sondes.json
+in_range = []     # lijst van sondes binnen drempelafstand
+items = []        # alle sondes uit radiosondy.py
 settings = {}     # actuele instellingen
 
 
@@ -30,31 +28,11 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 # ----------------------------
-# Laad sondes.json
-# ----------------------------
-def load_sonde_list():
-    """Lees de laatst bekende sondes uit data/sondes.json"""
-    path = os.path.join(os.path.dirname(__file__), "../../data/sondes.json")
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            lijst = data.get("items", [])
-            print(f"[PROX] {len(lijst)} sondes geladen uit sondes.json")
-            return lijst
-    except Exception as e:
-        print(f"[PROX] Kon sondes.json niet laden: {e}")
-        return []
-
-
-# ----------------------------
 # Hoofd-thread: controleert sondes in de buurt
 # ----------------------------
 def nearest_loop():
     """Continu controleren welke sondes binnen de ingestelde afstand vallen."""
-    global nearest, nearest_d_m, in_range, items
-
-    # Laad dataset bij start
-    items = load_sonde_list()
+    global nearest, nearest_d_m, in_range
 
     while True:
         with state_lock:
@@ -63,36 +41,16 @@ def nearest_loop():
             have, glat, glon = gps_have, gps_lat, gps_lon
             lst = list(items)
 
-        if not have:
-            print("[PROX] Geen GPS beschikbaar, wacht op positie...")
-            time.sleep(3)
-            continue
-
-        if not lst:
-            print("[PROX] Geen sondes geladen, controle slaat over.")
-            time.sleep(10)
-            continue
-
-        try:
+        if have and lst:
             gevonden = []
             dichtste, min_d = None, None
 
             for it in lst:
-                try:
-                    lat, lon = float(it["lat"]), float(it["lon"])
-                    d = haversine(glat, glon, lat, lon)
-
-                    # Debug — toon eerste 10 dichtbij sondes
-                    if d < 100000:  # minder dan 100 km
-                        print(f"[DBG] {it['id']} afstand {d/1000:.2f} km")
-
-                    if d <= thr:
-                        gevonden.append({**it, "distance_m": d})
-                    if min_d is None or d < min_d:
-                        min_d, dichtste = d, it
-
-                except Exception as e:
-                    print(f"[ERR] Fout bij berekenen afstand voor {it.get('id')}: {e}")
+                d = haversine(glat, glon, it["lat"], it["lon"])
+                if d <= thr:
+                    gevonden.append({**it, "distance_m": d})
+                if min_d is None or d < min_d:
+                    min_d, dichtste = d, it
 
             with state_lock:
                 in_range = sorted(gevonden, key=lambda x: x["distance_m"])
@@ -104,28 +62,28 @@ def nearest_loop():
             else:
                 print(f"[PROX] Geen sondes binnen {thr/1000:.1f} km (dichtste {min_d/1000:.2f} km).")
 
-        except Exception as e:
-            print("[ERR] Proximity-loop:", e)
+        else:
+            with state_lock:
+                nearest, nearest_d_m, in_range = None, None, []
 
         time.sleep(2)
 
 
 # ----------------------------
-# GPS-updates vanuit gps.py
+# Functie om GPS live bij te werken
 # ----------------------------
 def update_gps(lat, lon):
     """Wordt aangeroepen vanuit gps.py wanneer een nieuw NMEA-pakket binnenkomt."""
     global gps_have, gps_lat, gps_lon, gps_last
     with state_lock:
         gps_have, gps_lat, gps_lon, gps_last = True, lat, lon, int(time.time())
-    print(f"[GPS→PROX] Nieuwe GPS-positie ontvangen: {lat:.5f}, {lon:.5f}")
 
 
 # ----------------------------
-# Huidige status
+# Getter voor huidige status
 # ----------------------------
 def get_status():
-    """Retourneer een snapshot van de huidige status."""
+    """Geeft snapshot van huidige proximiteitsstatus."""
     with state_lock:
         return {
             "gps_have": gps_have,
@@ -133,12 +91,12 @@ def get_status():
             "gps_lon": gps_lon,
             "nearest": nearest,
             "distance_m": nearest_d_m,
-            "in_range": in_range
+            "in_range": in_range,
         }
 
 
 # ----------------------------
-# Start de proximity-thread
+# Startfunctie
 # ----------------------------
 def start_proximity(settings=None, gps_module=None):
     """Start de proximity-thread als achtergrondproces."""
