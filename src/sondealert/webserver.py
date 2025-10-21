@@ -160,7 +160,7 @@ font-weight:600;cursor:pointer;}}
 <label>STATUS_KEEP (komma gescheiden):</label>
 <input name='STATUS_KEEP' value="{','.join(s.get('STATUS_KEEP',['UNKNOWN','NEED ATTENTION']))}">
 <label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name='LAUNCH_FILTERS' rows='4'>{'\\n'.join(s.get('LAUNCH_FILTERS',['DE BILT (NL)','DE BILT']))}</textarea>
+<textarea name='LAUNCH_FILTERS' rows='4'>{"\n".join(s.get("LAUNCH_FILTERS",["DE BILT (NL)","DE BILT"]))}</textarea>
 <div><button type='submit' class='save'>Opslaan</button>
 <button type='button' class='back' onclick="window.location.href='/'">Terug</button></div>
 </form></div></body></html>"""

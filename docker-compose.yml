@@ -1,6 +1,4 @@
 # ---- SondeAlert docker-compose configuration ----
-version: "3.9"
-
 services:
   sondealert:
     build: .
