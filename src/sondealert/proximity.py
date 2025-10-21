@@ -5,8 +5,9 @@ from .utils import state_lock
 # Gedeelde statusvariabelen
 gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 nearest, nearest_d_m = None, None
-items = []  # lijst van sondes (uit radiosondy.py)
-settings = {}  # actieve instellingen (wordt live bijgewerkt)
+in_range = []     # lijst van sondes binnen drempelafstand
+items = []        # alle sondes uit radiosondy.py
+settings = {}     # actuele instellingen
 
 
 # ----------------------------
@@ -27,41 +28,49 @@ def haversine(lat1, lon1, lat2, lon2):
 
 
 # ----------------------------
-# Hoofd-thread: berekent dichtstbijzijnde sonde
+# Hoofd-thread: controleert sondes in de buurt
 # ----------------------------
 def nearest_loop():
-    """Continu controleren welke sonde het dichtstbij is."""
-    global nearest, nearest_d_m
+    """Continu controleren welke sondes binnen de ingestelde afstand vallen."""
+    global nearest, nearest_d_m, in_range
 
     while True:
         with state_lock:
-            # Laad steeds actuele instellingen
             s = load_settings()
             thr = float(s.get("NEAR_THRESHOLD_M", 10000))
             have, glat, glon = gps_have, gps_lat, gps_lon
             lst = list(items)
 
         if have and lst:
-            # Vind de dichtstbijzijnde sonde
-            best = min(lst, key=lambda it: haversine(glat, glon, it["lat"], it["lon"]))
-            d = haversine(glat, glon, best["lat"], best["lon"])
+            gevonden = []
+            dichtste, min_d = None, None
+
+            for it in lst:
+                d = haversine(glat, glon, it["lat"], it["lon"])
+                if d <= thr:
+                    gevonden.append({**it, "distance_m": d})
+                if min_d is None or d < min_d:
+                    min_d, dichtste = d, it
 
             with state_lock:
-                if d <= thr:
-                    nearest, nearest_d_m = best, d
-                    print(f"[PROX] Dichtste sonde {best['id']} op {d/1000:.2f} km (binnen drempel {thr/1000:.1f} km)")
-                else:
-                    nearest, nearest_d_m = None, None
-                    print(f"[PROX] Geen sonde binnen bereik (drempel {thr/1000:.1f} km, dichtste {d/1000:.2f} km)")
+                in_range = sorted(gevonden, key=lambda x: x["distance_m"])
+                nearest = dichtste if min_d is not None else None
+                nearest_d_m = min_d
+
+            if in_range:
+                print(f"[PROX] {len(in_range)} sondes binnen {thr/1000:.1f} km, dichtste {min_d/1000:.2f} km.")
+            else:
+                print(f"[PROX] Geen sondes binnen {thr/1000:.1f} km (dichtste {min_d/1000:.2f} km).")
+
         else:
             with state_lock:
-                nearest, nearest_d_m = None, None
+                nearest, nearest_d_m, in_range = None, None, []
 
-        time.sleep(1)
+        time.sleep(2)
 
 
 # ----------------------------
-# Functie om GPS-positie live bij te werken
+# Functie om GPS live bij te werken
 # ----------------------------
 def update_gps(lat, lon):
     """Wordt aangeroepen vanuit gps.py wanneer een nieuw NMEA-pakket binnenkomt."""
@@ -71,26 +80,26 @@ def update_gps(lat, lon):
 
 
 # ----------------------------
-# Handige getter voor huidige status
+# Getter voor huidige status
 # ----------------------------
 def get_status():
-    """Retourneert een snapshot van de huidige proximiteit-status."""
+    """Geeft snapshot van huidige proximiteitsstatus."""
     with state_lock:
         return {
             "gps_have": gps_have,
             "gps_lat": gps_lat,
             "gps_lon": gps_lon,
             "nearest": nearest,
-            "distance_m": nearest_d_m
+            "distance_m": nearest_d_m,
+            "in_range": in_range,
         }
 
 
 # ----------------------------
-# Startfunctie voor de proximity-thread
+# Startfunctie
 # ----------------------------
 def start_proximity(settings=None, gps_module=None):
     """Start de proximity-thread als achtergrondproces."""
     t = threading.Thread(target=nearest_loop, daemon=True)
     t.start()
     print("[PROX] Proximity-thread gestart.")
-
