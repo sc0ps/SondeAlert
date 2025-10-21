@@ -204,13 +204,11 @@ document.getElementById('settingsForm').addEventListener('submit', async functio
                     s["STATUS_KEEP"] = [x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()]
                 if "LAUNCH_FILTERS" in data:
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
-
                 save_settings(s)
 
-                # instellingen opnieuw in geheugen laden
-                from .config import settings
-                settings.clear()
-                settings.update(load_settings())
+            # herlaad instellingen direct in het actieve geheugen
+            with state_lock:
+                prox.settings = load_settings()
 
             self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
         else:
