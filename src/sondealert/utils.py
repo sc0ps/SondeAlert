@@ -1,5 +1,4 @@
-import math
-import threading
+import math, threading
 
 # Gedeelde thread-lock (voorkomt dat meerdere threads tegelijk data wijzigen)
 state_lock = threading.Lock()

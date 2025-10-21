@@ -1,130 +1,127 @@
-import json
-import os
+import json, socket, threading, urllib.parse, os
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs
-from html import escape
-from .config import load_settings, save_settings
-from .gps import gps_have, gps_lat, gps_lon
-from .proximity import nearest_sondes, nearest_lock
+from .utils import state_lock
+from . import gps as gps_module
+from . import proximity as prox
+from .config import save_settings, load_settings
 
-# Webmap
+# map met statische webpagina’s
 WEB_DIR = os.path.join(os.path.dirname(__file__), "web")
 
+
 class WebHandler(SimpleHTTPRequestHandler):
-    def log_message(self, *args):
-        # stilhouden in console
-        pass
+    def log_message(self, *a):
+        pass  # geen console spam
 
-    def _send_json(self, obj, code=200):
-        data = json.dumps(obj).encode("utf-8")
-        self.send_response(code)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(data)))
-        self.end_headers()
-        self.wfile.write(data)
-
-    def _send_html_file(self, filename):
+    # ----------------------------
+    def _serve_file(self, filename, mime="text/html"):
         path = os.path.join(WEB_DIR, filename)
-        if not os.path.isfile(path):
-            self.send_error(404, "Not Found")
+        if not os.path.exists(path):
+            self.send_error(404)
             return
         with open(path, "rb") as f:
             data = f.read()
         self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Type", f"{mime}; charset=utf-8")
         self.send_header("Content-Length", str(len(data)))
         self.end_headers()
         self.wfile.write(data)
 
-    # --------- GET ---------
+    # ----------------------------
+    def _ok_json(self, obj: dict):
+        data = json.dumps(obj).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.end_headers()
+        self.wfile.write(data)
+
+    # ----------------------------
     def do_GET(self):
-        # Dashboard
-        if self.path == "/" or self.path.startswith("/index"):
-            return self._send_html_file("index.html")
+        path = self.path.split("?")[0]
 
-        # Instellingenpagina
-        if self.path == "/settings":
-            return self._send_html_file("settings.html")
+        # ---------- Dashboard ----------
+        if path in ("/", "/index.html"):
+            self._serve_file("index.html")
+            return
 
-        # JSON-data voor de kaart
-        if self.path == "/nearest.json":
-            with nearest_lock:
-                items = list(nearest_sondes)
-            payload = {
-                "gps": {
-                    "have": gps_have,
-                    "lat": gps_lat,
-                    "lon": gps_lon,
-                },
-                "items": items,
-            }
-            return self._send_json(payload)
+        # ---------- Instellingenpagina ----------
+        elif path == "/settings":
+            self._serve_file("settings.html")
+            return
 
-        # -------- Static files (CSS, JS, icons etc.) --------
-        if self.path.startswith("/static/"):
-            # Belangrijkste fix: voeg 'static/' toe in het pad
-            static_path = os.path.join(WEB_DIR, "static", self.path[len("/static/"):])
-            if os.path.isfile(static_path):
-                with open(static_path, "rb") as f:
-                    data = f.read()
+        # ---------- Actuele instellingen ----------
+        elif path == "/get_settings":
+            with state_lock:
+                s = load_settings()
+            self._ok_json(s)
+            return
 
-                # Content-type bepalen
-                if static_path.endswith(".js"):
-                    ctype = "application/javascript"
-                elif static_path.endswith(".css"):
-                    ctype = "text/css"
-                elif static_path.endswith(".png"):
-                    ctype = "image/png"
-                elif static_path.endswith(".jpg") or static_path.endswith(".jpeg"):
-                    ctype = "image/jpeg"
-                elif static_path.endswith(".svg"):
-                    ctype = "image/svg+xml"
-                else:
-                    ctype = "application/octet-stream"
+        # ---------- JSON endpoint (GPS + sonde) ----------
+        elif path == "/nearest.json":
+            with state_lock:
+                n, d = prox.nearest, prox.nearest_d_m
+                have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
+                sondes = prox.in_range
+            self._ok_json({
+                "gps": {"have": have, "lat": glat if have else None, "lon": glon if have else None},
+                "nearest": n,
+                "distance_m": d,
+                "in_range": sondes
+            })
+            return
 
-                self.send_response(200)
-                self.send_header("Content-Type", ctype)
-                self.send_header("Content-Length", str(len(data)))
-                self.end_headers()
-                self.wfile.write(data)
-                return
+        # ---------- Onbekend pad ----------
+        else:
+            self.send_error(404)
 
-        # Anders: 404
-        self.send_error(404, "Not Found")
-
-    # --------- POST ---------
+    # ----------------------------
     def do_POST(self):
-        # Instellingen opslaan
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(length).decode("utf-8")
-            params = parse_qs(body)
-            s = load_settings()
-            try:
-                s["NEAR_THRESHOLD_M"] = float(params.get("NEAR_THRESHOLD_M", [s["NEAR_THRESHOLD_M"]])[0])
-                s["MONTHS_BACK"] = int(params.get("MONTHS_BACK", [s["MONTHS_BACK"]])[0])
-                s["ALT_MAX_M"] = float(params.get("ALT_MAX_M", [s["ALT_MAX_M"]])[0])
-                status_keep = params.get("STATUS_KEEP", ["UNKNOWN,NEED ATTENTION"])[0]
-                s["STATUS_KEEP"] = [x.strip().upper() for x in status_keep.split(",") if x.strip()]
-                launch_filters = params.get("LAUNCH_FILTERS", ["DE BILT (NL)\nDE BILT"])[0]
-                s["LAUNCH_FILTERS"] = [ln.strip() for ln in launch_filters.splitlines() if ln.strip()]
-                s["BUZZER_ENABLED"] = "BUZZER_ENABLED" in params
+            body = self.rfile.read(length).decode()
+            data = urllib.parse.parse_qs(body)
 
-                if "BIND_HOST" in params:
-                    s["BIND_HOST"] = params.get("BIND_HOST", [s.get("BIND_HOST", "0.0.0.0")])[0]
-                if "BIND_PORT" in params:
-                    s["BIND_PORT"] = int(params.get("BIND_PORT", [s.get("BIND_PORT", 8080)])[0])
+            with state_lock:
+                s = load_settings()
+                s["BUZZER_ENABLED"] = ("BUZZER_ENABLED" in data)
+
+                for key in ("NEAR_THRESHOLD_M", "MONTHS_BACK", "ALT_MAX_M", "UPDATE_HOURS"):
+                    if key in data:
+                        try:
+                            val = data[key][0]
+                            s[key] = float(val) if "." in val else int(val)
+                        except Exception:
+                            pass
+
+                if "STATUS_KEEP" in data:
+                    s["STATUS_KEEP"] = [
+                        x.strip().upper() for x in data["STATUS_KEEP"][0].split(",") if x.strip()
+                    ]
+
+                if "LAUNCH_FILTERS" in data:
+                    s["LAUNCH_FILTERS"] = [
+                        x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()
+                    ]
 
                 save_settings(s)
-                print("[SETTINGS] Bestand opgeslagen:", json.dumps(s, ensure_ascii=False))
-                return self._send_json({"ok": True})
-            except Exception as e:
-                return self._send_json({"ok": False, "error": str(e)}, code=400)
+                print("[SETTINGS] Bestand opgeslagen:", json.dumps(s, indent=2))
 
-        self.send_error(404, "Not Found")
+                # direct opnieuw in geheugen laden
+                prox.settings = load_settings()
+                print("[SETTINGS] Geheugenwaarden vernieuwd")
 
-# --------- Start Webserver ---------
-def start(host="0.0.0.0", port=8080):
-    httpd = ThreadingHTTPServer((host, port), WebHandler)
-    print(f"[WEB] bereikbaar op http://{host}:{port}/")
-    httpd.serve_forever()
+            self._ok_json({"ok": True, "msg": "Instellingen opgeslagen ✅"})
+        else:
+            self.send_error(404)
+
+
+# ----------------------------
+def start(settings: dict):
+    """Start de ingebouwde webserver"""
+    bind_host = settings.get("BIND_HOST", "0.0.0.0")
+    bind_port = int(settings.get("BIND_PORT", 8080))
+    httpd = ThreadingHTTPServer((bind_host, bind_port), WebHandler)
+    ip = socket.gethostbyname(socket.gethostname())
+    print(f"[WEB] bereikbaar op http://{ip}:{bind_port}/")
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()

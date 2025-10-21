@@ -1,83 +1,69 @@
-import socket
-import time
-import threading
+import socket, time, threading
 from .utils import state_lock
 
-# Globale variabelen (zichtbaar voor andere modules)
-__all__ = ["gps_have", "gps_lat", "gps_lon", "gps_last"]
+# Globale GPS-statusvariabelen
+gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 
-gps_have = False
-gps_lat = 0.0
-gps_lon = 0.0
-gps_last = 0
 
 def nmea_to_decimal(nmea, hemi):
-    """Converteer NMEA-coördinaten naar decimale graden."""
+    """Converteer NMEA-coördinaat naar decimale graden."""
     if not nmea:
         return None
     try:
         raw = float(nmea)
-        deg = int(raw / 100)
-        minutes = raw - deg * 100
+        deg, minutes = int(raw / 100), raw - int(raw / 100) * 100
         dec = deg + minutes / 60.0
-        if hemi in ("S", "W"):
-            dec = -dec
-        return dec
+        return -dec if hemi in ("S", "W") else dec
     except Exception:
         return None
 
-def start(settings):
-    """Luister op UDP en verwerk NMEA-zinnen (RMC, GGA, GLL)."""
-    global gps_have, gps_lat, gps_lon, gps_last
 
+def start(settings: dict):
+    """Start een thread die luistert op UDP-poort voor GPS-data."""
     port = int(settings.get("GPS_PORT", 5050))
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind(("0.0.0.0", port))
-    sock.settimeout(1.0)
-
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("0.0.0.0", port))
+    s.settimeout(1.0)
     print(f"[GPS] Luistert op UDP-poort {port}")
 
     def loop():
         global gps_have, gps_lat, gps_lon, gps_last
         while True:
             try:
-                data, _ = sock.recvfrom(4096)
-                line = data.decode(errors="ignore").strip()
-                if not line.startswith("$"):
-                    continue
+                data, _ = s.recvfrom(2048)
+                parts = data.decode(errors="ignore").split(",")
 
-                parts = line.split(",")
-                lat = lon = None
-
-                # Herken verschillende NMEA-typen
-                if line.startswith("$GPRMC") and len(parts) > 6:
+                # RMC- en GGA-zinnen ondersteunen
+                if parts[0].endswith("RMC") and len(parts) >= 7:
                     lat = nmea_to_decimal(parts[3], parts[4][:1])
                     lon = nmea_to_decimal(parts[5], parts[6][:1])
-                elif line.startswith("$GPGGA") and len(parts) > 5:
+                elif parts[0].endswith("GGA") and len(parts) >= 6:
                     lat = nmea_to_decimal(parts[2], parts[3][:1])
                     lon = nmea_to_decimal(parts[4], parts[5][:1])
-                elif line.startswith("$GNGLL") and len(parts) > 5:
-                    lat = nmea_to_decimal(parts[1], parts[2][:1])
-                    lon = nmea_to_decimal(parts[3], parts[4][:1])
+                else:
+                    lat = lon = None
 
-                # Wanneer coördinaten geldig zijn → opslaan
-                if lat is not None and lon is not None:
+                # Geldige coördinaten → bijwerken
+                if lat and lon:
                     with state_lock:
-                        gps_lat = lat
-                        gps_lon = lon
-                        gps_have = True
-                        gps_last = int(time.time())
-                    print(f"[GPS] Positie ontvangen: {lat:.5f}, {lon:.5f}")
+                        gps_lat, gps_lon, gps_have, gps_last = lat, lon, True, int(time.time())
+
+                    # --- Nieuw: geef positie direct door aan proximity ---
+                    try:
+                        from . import proximity
+                        proximity.update_gps(lat, lon)
+                    except Exception as e:
+                        print(f"[GPS] Kon positie niet doorgeven aan proximity: {e}")
+                    # ------------------------------------------------------
+
             except socket.timeout:
                 pass
             except Exception as e:
-                print(f"[GPS] Fout bij verwerken: {e}")
+                print(f"[GPS] Fout bij ontvangen: {e}")
 
-            # Als er 15 seconden geen update is → fix verloren
-            if int(time.time()) - gps_last > 15 and gps_have:
+            # Na 15 seconden zonder update → GPS uit
+            if int(time.time()) - gps_last > 15:
                 with state_lock:
                     gps_have = False
-                print("[GPS] Geen signaal meer - fix verloren")
 
     threading.Thread(target=loop, daemon=True).start()
