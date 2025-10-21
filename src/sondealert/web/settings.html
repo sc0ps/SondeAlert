@@ -1,76 +1,171 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
-<meta charset="utf-8">
-<title>Instellingen – SondeAlert</title>
+<meta charset="utf-8" />
+<title>SondeAlert — Settings</title>
 <style>
-body{margin:0;min-height:100vh;background:linear-gradient(180deg,#0a2540,#001220);
-font-family:system-ui,Segoe UI,Arial,sans-serif;color:#fff;}
-.wrap{max-width:600px;margin:20px auto;padding:0 12px;}
-.card{background:rgba(255,255,255,0.08);padding:20px;border-radius:12px;
-box-shadow:0 0 15px rgba(0,0,0,0.3);}
-label{display:block;margin-top:10px;font-weight:600;color:#4fc3f7;}
-input,textarea{width:100%;padding:8px;border:none;border-radius:8px;
-background:rgba(255,255,255,0.1);color:#fff;}
-button{margin-top:16px;padding:10px 16px;border:none;border-radius:8px;
-font-weight:600;cursor:pointer;}
-.save{background:#4fc3f7;color:#001220;}
-.back{background:transparent;border:1px solid #4fc3f7;color:#4fc3f7;margin-left:8px;}
+:root {
+  --bg1:#0a2540;
+  --bg2:#001220;
+  --accent:#2ea8ff;
+  --accent-hover:#48b6ff;
+  --card:rgba(255,255,255,0.08);
+  --text:#ffffff;
+  --muted:#aab;
+}
+body {
+  margin:0;
+  font-family:"Segoe UI",Roboto,Arial,sans-serif;
+  background:linear-gradient(180deg,var(--bg1),var(--bg2));
+  color:var(--text);
+  display:flex;
+  flex-direction:column;
+  min-height:100vh;
+}
+header {
+  text-align:center;
+  padding:30px 0 10px;
+}
+h1 {
+  margin:0;
+  color:var(--accent);
+  font-size:2rem;
+}
+.tabs {
+  display:flex;
+  justify-content:center;
+  gap:10px;
+  margin-top:10px;
+}
+.tab-btn {
+  border:none;
+  background:transparent;
+  color:var(--accent);
+  border:1px solid var(--accent);
+  padding:8px 16px;
+  border-radius:999px;
+  font-weight:600;
+  cursor:pointer;
+  transition:0.2s;
+}
+.tab-btn.active {
+  background:var(--accent);
+  color:#001220;
+}
+.tab-btn:hover {
+  background:var(--accent-hover);
+  color:#001220;
+}
+.container {
+  flex:1;
+  width:90%;
+  max-width:700px;
+  margin:0 auto;
+  padding-bottom:20px;
+}
+.card {
+  background:var(--card);
+  border-radius:14px;
+  box-shadow:0 0 15px rgba(0,0,0,0.3);
+  padding:20px;
+  margin-top:16px;
+}
+label {
+  display:block;
+  margin-top:14px;
+  font-weight:600;
+  color:var(--accent);
+}
+input, textarea {
+  width:100%;
+  background:rgba(255,255,255,0.1);
+  border:none;
+  border-radius:8px;
+  color:#fff;
+  padding:10px;
+  margin-top:4px;
+  font-size:1em;
+}
+input[type="checkbox"] {
+  width:auto;
+  transform:scale(1.3);
+  margin-right:6px;
+}
+button {
+  border:none;
+  border-radius:8px;
+  padding:10px 16px;
+  font-weight:600;
+  cursor:pointer;
+  transition:0.2s;
+}
+button.save {
+  background:var(--accent);
+  color:#001220;
+}
+button.save:hover {
+  background:var(--accent-hover);
+}
+button.back {
+  background:transparent;
+  border:1px solid var(--accent);
+  color:var(--accent);
+  margin-left:8px;
+}
+button.back:hover {
+  background:var(--accent-hover);
+  color:#001220;
+}
+footer {
+  text-align:center;
+  padding:14px 0;
+  color:var(--muted);
+  font-size:0.9em;
+  border-top:1px solid rgba(255,255,255,0.1);
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-<h1>Instellingen</h1>
-<form id="settingsForm">
-<label><input type="checkbox" name="BUZZER_ENABLED"> Buzzer actief</label>
-<label>NEAR_THRESHOLD_M (m):</label>
-<input name="NEAR_THRESHOLD_M" value="">
-<label>MONTHS_BACK:</label>
-<input name="MONTHS_BACK" value="">
-<label>ALT_MAX_M:</label>
-<input name="ALT_MAX_M" value="">
-<label>STATUS_KEEP (komma gescheiden):</label>
-<input name="STATUS_KEEP" value="">
-<label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name="LAUNCH_FILTERS" rows="4"></textarea>
-<div>
-<button type="submit" class="save">Opslaan</button>
-<button type="button" class="back" onclick="window.location.href='/'">Terug</button>
+<header>
+  <h1>SondeAlert</h1>
+  <div class="tabs">
+    <button class="tab-btn" onclick="window.location.href='/'">Dashboard</button>
+    <button class="tab-btn active" onclick="window.location.href='/settings'">Settings</button>
+  </div>
+</header>
+
+<div class="container">
+  <div class="card">
+    <h3>System Settings</h3>
+    <form method="POST" action="/settings">
+      <label><input type="checkbox" name="BUZZER_ENABLED" id="buzz"> Enable buzzer alert</label>
+
+      <label for="thr">NEAR_THRESHOLD_M (m):</label>
+      <input id="thr" name="NEAR_THRESHOLD_M" value="15000">
+
+      <label for="months">MONTHS_BACK:</label>
+      <input id="months" name="MONTHS_BACK" value="24">
+
+      <label for="alt">ALT_MAX_M:</label>
+      <input id="alt" name="ALT_MAX_M" value="600">
+
+      <label for="status">STATUS_KEEP (comma separated):</label>
+      <input id="status" name="STATUS_KEEP" value="UNKNOWN,NEED ATTENTION">
+
+      <label for="launch">LAUNCH_FILTERS (one per line):</label>
+      <textarea id="launch" name="LAUNCH_FILTERS" rows="4">DE BILT (NL)
+DE BILT</textarea>
+
+      <div style="margin-top:16px;text-align:center;">
+        <button type="submit" class="save">Save Settings</button>
+        <button type="button" class="back" onclick="window.location.href='/'">Back</button>
+      </div>
+    </form>
+  </div>
 </div>
-</form>
-</div>
 
-<script>
-async function loadSettings() {
-  try {
-    const res = await fetch('/get_settings');
-    const s = await res.json();
-    document.querySelector('[name="BUZZER_ENABLED"]').checked = s.BUZZER_ENABLED || false;
-    document.querySelector('[name="NEAR_THRESHOLD_M"]').value = s.NEAR_THRESHOLD_M || 15000;
-    document.querySelector('[name="MONTHS_BACK"]').value = s.MONTHS_BACK || 24;
-    document.querySelector('[name="ALT_MAX_M"]').value = s.ALT_MAX_M || 600;
-    document.querySelector('[name="STATUS_KEEP"]').value = (s.STATUS_KEEP || []).join(',');
-    document.querySelector('[name="LAUNCH_FILTERS"]').value = (s.LAUNCH_FILTERS || []).join('\n');
-  } catch (e) {
-    console.error('Kon instellingen niet laden:', e);
-  }
-}
-
-document.getElementById('settingsForm').addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const form = e.target;
-  const formData = new URLSearchParams(new FormData(form));  // << fix hier!
-  const res = await fetch('/settings', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: formData.toString()
-  });
-  const j = await res.json();
-  alert(j.msg || 'Instellingen opgeslagen ✅');
-  loadSettings(); // herlaad na opslaan
-});
-
-loadSettings(); // laad bij start
-</script>
+<footer>
+  <p>© 2025 SondeAlert — Developed by Scops Owl Designs</p>
+</footer>
 </body>
 </html>
