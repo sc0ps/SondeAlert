@@ -4,17 +4,22 @@ from .utils import state_lock
 # Globale GPS-statusvariabelen
 gps_have, gps_lat, gps_lon, gps_last = False, 0.0, 0.0, 0
 
+
 def nmea_to_decimal(nmea, hemi):
-    """Converteer NMEA-coördinaat naar decimale graden"""
+    """Converteer NMEA-coördinaat naar decimale graden."""
     if not nmea:
         return None
-    raw = float(nmea)
-    deg, minutes = int(raw / 100), raw - int(raw / 100) * 100
-    dec = deg + minutes / 60.0
-    return -dec if hemi in ("S", "W") else dec
+    try:
+        raw = float(nmea)
+        deg, minutes = int(raw / 100), raw - int(raw / 100) * 100
+        dec = deg + minutes / 60.0
+        return -dec if hemi in ("S", "W") else dec
+    except Exception:
+        return None
+
 
 def start(settings: dict):
-    """Start een thread die luistert op UDP-poort voor GPS-data"""
+    """Start een thread die luistert op UDP-poort voor GPS-data."""
     port = int(settings.get("GPS_PORT", 5050))
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(("0.0.0.0", port))
@@ -38,15 +43,25 @@ def start(settings: dict):
                 else:
                     lat = lon = None
 
-                # geldige coördinaten → bijwerken
+                # Geldige coördinaten → bijwerken
                 if lat and lon:
                     with state_lock:
                         gps_lat, gps_lon, gps_have, gps_last = lat, lon, True, int(time.time())
 
+                    # --- Nieuw: geef positie direct door aan proximity ---
+                    try:
+                        from . import proximity
+                        proximity.update_gps(lat, lon)
+                    except Exception as e:
+                        print(f"[GPS] Kon positie niet doorgeven aan proximity: {e}")
+                    # ------------------------------------------------------
+
             except socket.timeout:
                 pass
+            except Exception as e:
+                print(f"[GPS] Fout bij ontvangen: {e}")
 
-            # Na 15 s zonder update → GPS uit
+            # Na 15 seconden zonder update → GPS uit
             if int(time.time()) - gps_last > 15:
                 with state_lock:
                     gps_have = False
