@@ -5,11 +5,13 @@ from . import gps as gps_module
 from . import proximity as prox
 from .config import save_settings, load_settings
 
-class WebHandler(SimpleHTTPRequestHandler):
-    def log_message(self,*a):  # geen console-spam
-        pass
 
-    # --- helpers ----------------------------------------------------------
+class WebHandler(SimpleHTTPRequestHandler):
+    def log_message(self, *a):
+        pass  # geen console-spam
+
+    # -----------------------------------------------------------
+    # helpers
     def _ok_html(self, html: str):
         data = html.encode("utf-8")
         self.send_response(200)
@@ -26,30 +28,30 @@ class WebHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
-    # --- GET-routes -------------------------------------------------------
+    # -----------------------------------------------------------
+    # GET-routes
     def do_GET(self):
         path = self.path.split("?")[0]
 
-        # ---------- Dashboard ----------
+        # ---------- dashboard ----------
         if path in ("/", "/index.html"):
             with state_lock:
                 have, glat, glon = gps_module.gps_have, gps_module.gps_lat, gps_module.gps_lon
+
             html = f"""<!DOCTYPE html>
 <html lang='nl'><head><meta charset='utf-8'><title>SondeAlert</title>
 <style>
 :root{{--bg1:#0a2540;--bg2:#001220;--accent:#4fc3f7;--card:rgba(255,255,255,0.08);
 --text:#fff;--muted:#aab;}}
-body{{margin:0;min-height:100vh;
-background:linear-gradient(180deg,var(--bg1),var(--bg2));
-background-attachment:fixed;background-size:cover;
-font-family:system-ui,Segoe UI,Arial,sans-serif;color:var(--text);}}
+body{{margin:0;min-height:100vh;background:linear-gradient(180deg,var(--bg1),var(--bg2));
+background-attachment:fixed;background-size:cover;font-family:system-ui,Segoe UI,Arial,sans-serif;
+color:var(--text);}}
 .wrap{{max-width:900px;margin:20px auto;padding:0 12px;}}
 .card{{background:var(--card);padding:20px;border-radius:12px;
 box-shadow:0 0 15px rgba(0,0,0,0.3);margin-bottom:12px;}}
 h1{{color:var(--accent);margin:8px 0 16px;}}
 table{{border-collapse:collapse;width:100%;}}
-th,td{{border-bottom:1px solid rgba(255,255,255,.1);
-padding:6px 4px;text-align:left;}}
+th,td{{border-bottom:1px solid rgba(255,255,255,.1);padding:6px 4px;text-align:left;}}
 .badge{{display:inline-block;padding:2px 8px;border:1px solid var(--accent);
 border-radius:999px;color:var(--accent);}}
 #map{{height:420px;border-radius:10px;margin-top:12px;}}
@@ -89,7 +91,7 @@ async function update(){{
     const s=await r.json();
     document.getElementById('nearest').innerHTML = s.nearest ?
       `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th>
-      <th>Laatste</th><th>Locatie</th></tr>
+       <th>Laatste</th><th>Locatie</th></tr>
        <tr><td>${{s.nearest.id}}</td><td>${{s.nearest.status}}</td>
            <td>${{(s.distance_m/1000).toFixed(2)}} km</td>
            <td>${{parseInt(s.nearest.alt)}} m</td>
@@ -97,13 +99,11 @@ async function update(){{
       : "Geen sonde binnen bereik.";
     if(!s.gps.have) return;
     let lat=s.gps.lat,lon=s.gps.lon;
-    if(!my) my=L.marker([lat,lon]).addTo(map).bindPopup('Jij');
-    else my.setLatLng([lat,lon]);
+    if(!my) my=L.marker([lat,lon]).addTo(map).bindPopup('Jij'); else my.setLatLng([lat,lon]);
     const n=s.nearest,d=s.distance_m;
     if(n&&d){{
       let sl=n.lat,so=n.lon;
-      if(!sn) sn=L.marker([sl,so]).addTo(map).bindPopup(`Sonde ${{n.id}}`);
-      else sn.setLatLng([sl,so]);
+      if(!sn) sn=L.marker([sl,so]).addTo(map).bindPopup(`Sonde ${{n.id}}`); else sn.setLatLng([sl,so]);
       if(line) line.remove();
       line=L.polyline([[lat,lon],[sl,so]],{{color:'red'}}).addTo(map);
       map.fitBounds([[lat,lon],[sl,so]],{{padding:[40,40]}});
@@ -116,7 +116,7 @@ window.addEventListener('load',()=>{{update();setInterval(update,5000);}});
             self._ok_html(html)
             return
 
-        # ---------- JSON-endpoint ----------
+        # ---------- JSON endpoint ----------
         elif path == "/nearest.json":
             with state_lock:
                 n, d = prox.nearest, prox.nearest_d_m
@@ -127,10 +127,14 @@ window.addEventListener('load',()=>{{update();setInterval(update,5000);}});
             })
             return
 
-        # ---------- Instellingen-pagina ----------
+        # ---------- instellingen ----------
         elif path == "/settings":
             with state_lock:
                 s = load_settings()
+
+            launch_filters_text = "\n".join(s.get("LAUNCH_FILTERS", ["DE BILT (NL)", "DE BILT"]))
+            status_keep_text = ",".join(s.get("STATUS_KEEP", ["UNKNOWN", "NEED ATTENTION"]))
+
             html = f"""<!DOCTYPE html><html lang='nl'><head><meta charset='utf-8'>
 <title>Instellingen – SondeAlert</title>
 <style>
@@ -158,9 +162,9 @@ font-weight:600;cursor:pointer;}}
 <label>ALT_MAX_M:</label>
 <input name='ALT_MAX_M' value='{s.get('ALT_MAX_M',600)}'>
 <label>STATUS_KEEP (komma gescheiden):</label>
-<input name='STATUS_KEEP' value="{','.join(s.get('STATUS_KEEP',['UNKNOWN','NEED ATTENTION']))}">
+<input name='STATUS_KEEP' value="{status_keep_text}">
 <label>LAUNCH_FILTERS (één per regel):</label>
-<textarea name='LAUNCH_FILTERS' rows='4'>{"\n".join(s.get("LAUNCH_FILTERS",["DE BILT (NL)","DE BILT"]))}</textarea>
+<textarea name='LAUNCH_FILTERS' rows='4'>{launch_filters_text}</textarea>
 <div><button type='submit' class='save'>Opslaan</button>
 <button type='button' class='back' onclick="window.location.href='/'">Terug</button></div>
 </form></div></body></html>"""
@@ -170,7 +174,8 @@ font-weight:600;cursor:pointer;}}
         else:
             self.send_error(404)
 
-    # --- POST-routes -------------------------------------------------------
+    # -----------------------------------------------------------
+    # POST-routes
     def do_POST(self):
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
@@ -193,7 +198,8 @@ font-weight:600;cursor:pointer;}}
         else:
             self.send_error(404)
 
-# ---------------------------------------------------------------------------
+
+# -----------------------------------------------------------
 def start(settings: dict):
     bind_host = settings.get("BIND_HOST","0.0.0.0")
     bind_port = int(settings.get("BIND_PORT",8080))
