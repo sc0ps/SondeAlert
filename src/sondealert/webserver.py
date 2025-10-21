@@ -8,10 +8,9 @@ from .config import save_settings, load_settings
 
 class WebHandler(SimpleHTTPRequestHandler):
     def log_message(self, *a):
-        pass  # geen console-spam
+        pass
 
     # -----------------------------------------------------------
-    # helpers
     def _ok_html(self, html: str):
         data = html.encode("utf-8")
         self.send_response(200)
@@ -29,7 +28,6 @@ class WebHandler(SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     # -----------------------------------------------------------
-    # GET-routes
     def do_GET(self):
         path = self.path.split("?")[0]
 
@@ -76,7 +74,7 @@ button.tab.active{{background:var(--accent);color:#001220;}}
 
 <div class='card'>
   <h3>Dichtstbijzijnde sonde</h3>
-  <div id='nearest'></div>
+  <div id='nearest'>Laden...</div>
   <div id='map'></div>
 </div>
 
@@ -87,7 +85,7 @@ let my=null,sn=null,line=null;
 
 async function update(){{
   try{{
-    const r=await fetch('/nearest.json',{{cache:'no-store'}});
+    const r=await fetch('/nearest.json?'+Date.now());
     const s=await r.json();
     document.getElementById('nearest').innerHTML = s.nearest ?
       `<table><tr><th>ID</th><th>Status</th><th>Afstand</th><th>Hoogte</th>
@@ -131,7 +129,6 @@ window.addEventListener('load',()=>{{update();setInterval(update,5000);}});
         elif path == "/settings":
             with state_lock:
                 s = load_settings()
-
             launch_filters_text = "\n".join(s.get("LAUNCH_FILTERS", ["DE BILT (NL)", "DE BILT"]))
             status_keep_text = ",".join(s.get("STATUS_KEEP", ["UNKNOWN", "NEED ATTENTION"]))
 
@@ -153,7 +150,7 @@ font-weight:600;cursor:pointer;}}
 </style></head>
 <body><div class='wrap'>
 <h1>Instellingen</h1>
-<form method='POST' action='/settings'>
+<form id='settingsForm' method='POST' action='/settings'>
 <label><input type='checkbox' name='BUZZER_ENABLED' {'checked' if s.get('BUZZER_ENABLED') else ''}> Buzzer actief</label>
 <label>NEAR_THRESHOLD_M (m):</label>
 <input name='NEAR_THRESHOLD_M' value='{s.get('NEAR_THRESHOLD_M',15000)}'>
@@ -167,7 +164,18 @@ font-weight:600;cursor:pointer;}}
 <textarea name='LAUNCH_FILTERS' rows='4'>{launch_filters_text}</textarea>
 <div><button type='submit' class='save'>Opslaan</button>
 <button type='button' class='back' onclick="window.location.href='/'">Terug</button></div>
-</form></div></body></html>"""
+</form>
+
+<script>
+document.getElementById('settingsForm').addEventListener('submit', async function(e) {{
+  e.preventDefault();
+  const formData = new FormData(this);
+  const res = await fetch('/settings', {{method:'POST', body: formData}});
+  if(res.ok) alert('Instellingen opgeslagen ✅');
+}});
+</script>
+
+</div></body></html>"""
             self._ok_html(html)
             return
 
@@ -175,7 +183,6 @@ font-weight:600;cursor:pointer;}}
             self.send_error(404)
 
     # -----------------------------------------------------------
-    # POST-routes
     def do_POST(self):
         if self.path == "/settings":
             length = int(self.headers.get("Content-Length", 0))
@@ -194,15 +201,14 @@ font-weight:600;cursor:pointer;}}
                 if "LAUNCH_FILTERS" in data:
                     s["LAUNCH_FILTERS"] = [x.strip() for x in data["LAUNCH_FILTERS"][0].split("\n") if x.strip()]
                 save_settings(s)
-            self._ok_html("<html><body style='font-family:sans-serif'><h3>Instellingen opgeslagen ✅</h3><a href='/'>Terug</a></body></html>")
+            self._ok_json({"ok": True})
         else:
             self.send_error(404)
 
 
-# -----------------------------------------------------------
 def start(settings: dict):
-    bind_host = settings.get("BIND_HOST","0.0.0.0")
-    bind_port = int(settings.get("BIND_PORT",8080))
+    bind_host = settings.get("BIND_HOST", "0.0.0.0")
+    bind_port = int(settings.get("BIND_PORT", 8080))
     httpd = ThreadingHTTPServer((bind_host, bind_port), WebHandler)
     ip = socket.gethostbyname(socket.gethostname())
     print(f"[WEB] bereikbaar op http://{ip}:{bind_port}/")
