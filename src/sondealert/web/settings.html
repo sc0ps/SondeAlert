@@ -17,15 +17,12 @@
 
     header {
       background: #0a0a0a;
-      color: #e0e0e0;
       padding: 12px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       box-shadow: 0 2px 8px rgba(0,0,0,0.6);
     }
-
-    header h1 { margin: 0; font-size: 1.2rem; }
 
     main {
       flex: 1;
@@ -43,29 +40,16 @@
       width: 100%;
     }
 
-    label {
-      display: block;
-      margin-top: 15px;
-      font-weight: 600;
-      color: #ccc;
-    }
+    label { display: block; margin-top: 15px; font-weight: 600; color: #ccc; }
 
-    input,
-    select {
+    input, select {
       width: 100%;
-      box-sizing: border-box;
       padding: 10px;
       margin-top: 5px;
       border-radius: 6px;
       border: 1px solid #444;
       background: #2b2b2b;
       color: #eee;
-      font-size: 1rem;
-      appearance: none;
-    }
-
-    select {
-      padding-right: 35px; /* makes dropdown arrow align neatly */
     }
 
     button {
@@ -83,12 +67,6 @@
 
     button:hover { background: #0077e6; }
 
-    .back-btn {
-      background: #444;
-      margin-right: 10px;
-      width: auto;
-    }
-
     footer {
       text-align: center;
       padding: 10px;
@@ -101,18 +79,18 @@
 <body>
   <header>
     <h1>Settings</h1>
-    <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+    <button onclick="window.location.href='index.html'">← Back</button>
   </header>
 
   <main>
     <form id="settings-form">
-      <label for="nearThreshold">Maximum distance (meters):</label>
+      <label for="nearThreshold">Maximum distance (m):</label>
       <input type="number" id="nearThreshold" min="1000" step="500">
 
-      <label for="altMax">Maximum altitude (meters):</label>
+      <label for="altMax">Maximum altitude (m):</label>
       <input type="number" id="altMax" min="100" step="100">
 
-      <label for="updateHours">DB Update interval (hours):</label>
+      <label for="updateHours">Update interval (h):</label>
       <input type="number" id="updateHours" min="1" step="1">
 
       <label for="buzzer">Enable buzzer:</label>
@@ -125,12 +103,12 @@
     </form>
   </main>
 
-  <footer>© 2025 SondeAlert — Developed by Scops Owl Designs</footer>
+  <footer>© 2025 SondeAlert – Scops Owl Designs</footer>
 
   <script>
     async function loadSettings() {
-      const r = await fetch('/settings.json');
-      const s = await r.json();
+      const res = await fetch('/settings.json');
+      const s = await res.json();
       nearThreshold.value = s.NEAR_THRESHOLD_M || 15000;
       altMax.value = s.ALT_MAX_M || 600;
       updateHours.value = s.UPDATE_HOURS || 24;
