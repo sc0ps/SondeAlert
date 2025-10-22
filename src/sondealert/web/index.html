@@ -23,10 +23,6 @@
       box-shadow: 0 2px 5px rgba(0,0,0,0.2);
     }
 
-    #status {
-      font-size: 0.9rem;
-    }
-
     #map {
       height: calc(100vh - 60px);
       width: 100%;
@@ -36,9 +32,26 @@
       font-size: 0.9rem;
     }
 
-    .gps-info {
+    /* Info-paneel rechtsboven */
+    #nearest-info {
+      position: absolute;
+      top: 75px;
+      right: 15px;
+      background: rgba(255,255,255,0.95);
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      padding: 10px 15px;
       font-size: 0.9rem;
-      margin-top: 4px;
+      min-width: 200px;
+      line-height: 1.4;
+    }
+
+    #nearest-info strong {
+      color: #005bbb;
+    }
+
+    #nearest-info small {
+      color: #666;
     }
   </style>
 </head>
@@ -53,101 +66,117 @@
   </header>
 
   <div id="map"></div>
+  <div id="nearest-info">
+    <strong>Dichtstbijzijnde sonde:</strong><br>
+    <small>Geen gegevens...</small>
+  </div>
 
   <script>
-    let map = L.map('map').setView([52.1, 4.3], 10);
+    const map = L.map('map').setView([52.1, 4.3], 9);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap',
     }).addTo(map);
 
+    // === Marker icons ===
+    const myIcon = L.icon({
+      iconUrl: '/static/my-marker.png', // jouw markerafbeelding
+      iconSize: [40, 40],
+      iconAnchor: [20, 40],
+      popupAnchor: [0, -35]
+    });
+
+    const orangeIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34]
+    });
+
+    const blueIcon = L.icon({
+      iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+      iconSize: [25, 41],
+      iconAnchor: [12, 41],
+      popupAnchor: [1, -34]
+    });
+
     let gpsMarker = null;
     let sondeMarkers = [];
     let connectionLine = null;
-    let nearThreshold = 15000; // standaardwaarde
-    let lastNearest = null;
 
-    // Helper: afstandsformattering
     function formatDistance(m) {
       if (m < 1000) return `${m.toFixed(0)} m`;
-      return `${(m/1000).toFixed(2)} km`;
+      return `${(m / 1000).toFixed(2)} km`;
+    }
+
+    function updateNearestInfo(sonde) {
+      const box = document.getElementById('nearest-info');
+      if (!sonde) {
+        box.innerHTML = `<strong>Dichtstbijzijnde sonde:</strong><br><small>Geen gegevens...</small>`;
+        return;
+      }
+      box.innerHTML = `
+        <strong>${sonde.name || 'Onbekend'}</strong><br>
+        Afstand: ${formatDistance(sonde.distance_m)}<br>
+        Hoogte: ${sonde.alt_m || '?'} m<br>
+        Status: ${sonde.status || 'Onbekend'}
+      `;
     }
 
     async function updateData() {
       try {
-        // Settings ophalen
-        const settings = await fetch('/settings.json').then(r => r.json());
-        nearThreshold = settings.NEAR_THRESHOLD_M || 15000;
-
-        // GPS ophalen
         const gps = await fetch('/gps.json').then(r => r.json());
+        const sondes = await fetch('/nearest.json').then(r => r.json());
         const lat = gps.lat || 0;
         const lon = gps.lon || 0;
-        const fix = gps.fix || false;
+        const fix = gps.fix ?? true;
         const gpsText = fix ? '✅ Fix OK' : '⚠️ Geen signaal';
-        document.getElementById('gps-status').innerText = `GPS: ${gpsText}`;
-        document.getElementById('gps-coords').innerText = `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
 
-        // GPS marker
+        document.getElementById('gps-status').innerText = `GPS: ${gpsText}`;
+        document.getElementById('gps-coords').innerText =
+          `Lat: ${lat.toFixed(5)}, Lon: ${lon.toFixed(5)}`;
+
+        // --- Jouw locatie ---
         if (!gpsMarker) {
-          gpsMarker = L.marker([lat, lon], { title: 'Jouw positie' }).addTo(map);
+          gpsMarker = L.marker([lat, lon], { icon: myIcon, title: 'Jouw positie' }).addTo(map);
         } else {
           gpsMarker.setLatLng([lat, lon]);
         }
 
-        // Sondes ophalen
-        const sondes = await fetch('/nearest.json').then(r => r.json());
-
-        // Oude markers verwijderen
+        // --- Sondes ---
         sondeMarkers.forEach(m => map.removeLayer(m));
         sondeMarkers = [];
-
-        // Dichtstbijzijnde bepalen
-        let nearest = null;
-        let minDist = Infinity;
+        let nearest = null, minDist = Infinity;
 
         sondes.forEach(s => {
-          const marker = L.marker([s.lat, s.lon], {
-            icon: L.icon({
-              iconUrl: 'https://cdn-icons-png.flaticon.com/512/616/616408.png',
-              iconSize: [25, 25],
-            })
-          }).addTo(map);
-
-          const popup = `
+          const icon = (s.status === 'NEED ATTENTION') ? blueIcon : orangeIcon;
+          const marker = L.marker([s.lat, s.lon], { icon }).addTo(map);
+          marker.bindPopup(`
             <div class="sonde-popup">
               <strong>${s.name || 'Onbekend'}</strong><br>
               Afstand: ${formatDistance(s.distance_m)}<br>
               Hoogte: ${s.alt_m || '?'} m<br>
               Status: ${s.status || 'Onbekend'}<br>
               Laatste update: ${s.time || '-'}
-            </div>`;
-          marker.bindPopup(popup);
+            </div>
+          `);
           sondeMarkers.push(marker);
-
           if (s.distance_m < minDist) {
             nearest = s;
             minDist = s.distance_m;
           }
         });
 
-        // Lijn naar dichtstbijzijnde
+        // --- Lijn tekenen ---
         if (connectionLine) map.removeLayer(connectionLine);
-        if (nearest && fix) {
+        if (nearest) {
           connectionLine = L.polyline([[lat, lon], [nearest.lat, nearest.lon]], {
             color: 'red',
-            weight: 2,
-            dashArray: '5,5'
+            weight: 3,
+            dashArray: '6,6'
           }).addTo(map);
-          lastNearest = nearest;
         }
 
-        // Automatisch centreren
-        if (fix && nearest) {
-          const bounds = L.latLngBounds([[lat, lon], [nearest.lat, nearest.lon]]);
-          map.fitBounds(bounds, { padding: [50, 50] });
-        } else if (fix) {
-          map.setView([lat, lon], 11);
-        }
+        updateNearestInfo(nearest);
 
       } catch (err) {
         console.error('Update-fout:', err);
@@ -155,7 +184,7 @@
     }
 
     updateData();
-    setInterval(updateData, 10000);
+    setInterval(updateData, 5000); // elke 5 seconden verversen
   </script>
 </body>
 </html>
