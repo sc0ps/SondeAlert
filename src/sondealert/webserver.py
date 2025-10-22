@@ -9,13 +9,13 @@ from sondealert import config, gps, proximity, radiosondy
 log = logging.getLogger("web")
 
 BASE_WEB = os.path.join(os.path.dirname(__file__), "web")
+DATA_FILE = os.path.join(os.path.dirname(__file__), "../data/sondes.json")
 
 
 class WebHandler(SimpleHTTPRequestHandler):
     """Behandelt HTTP-verzoeken voor de SondeAlert webinterface."""
 
     def log_message(self, format, *args):
-        # Schrijf logregels naar standaard logger i.p.v. stdout
         log.info("%s - %s" % (self.client_address[0], format % args))
 
     def do_GET(self):
@@ -28,21 +28,29 @@ class WebHandler(SimpleHTTPRequestHandler):
             return self.serve_static("settings.html")
 
         elif path == "/settings.json":
-            settings = config.load_settings()
-            return self.respond_json(settings)
+            return self.respond_json(config.load_settings())
 
         elif path == "/gps.json":
             lat, lon, fix = gps.get_last_position()
             return self.respond_json({"lat": lat, "lon": lon, "fix": fix})
 
         elif path == "/nearest.json":
-            nearest = proximity.get_nearby_sondes()
-            return self.respond_json(nearest)
+            return self.respond_json(proximity.get_nearby_sondes())
 
         elif path == "/update_sondes":
             log.info("[web] Handmatige update van sondelijst gestart via webinterface.")
-            radiosondy.async_update_sonde_list()
+            radiosondy.update_sonde_list()
             return self.respond_json({"ok": True, "message": "Sonde list update started."})
+
+        # 🆕 Nieuw endpoint: geef sondes.json rechtstreeks terug
+        elif path == "/sondes.json":
+            if os.path.exists(DATA_FILE):
+                with open(DATA_FILE, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                return self.respond_json(data)
+            else:
+                self.send_error(404, "sondes.json not found")
+                return
 
         else:
             self.send_error(404, "File not found")
@@ -63,7 +71,6 @@ class WebHandler(SimpleHTTPRequestHandler):
     # ===== Helpers =====
 
     def serve_static(self, filename):
-        """Serve static HTML files from /web directory."""
         file_path = os.path.join(BASE_WEB, filename)
         if not os.path.exists(file_path):
             self.send_error(404, "File not found")
@@ -86,7 +93,6 @@ class WebHandler(SimpleHTTPRequestHandler):
 
 
 def start_web_server():
-    """Start de HTTP webserver."""
     server = ThreadingHTTPServer(("0.0.0.0", 8080), WebHandler)
     log.info("[web] Webserver gestart op http://0.0.0.0:8080/")
     server.serve_forever()
