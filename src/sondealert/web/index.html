@@ -144,9 +144,9 @@
         `Lat: ${gps.lat ? gps.lat.toFixed(5) : '---'}, Lon: ${gps.lon ? gps.lon.toFixed(5) : '---'}`;
 
       if (nearest) {
-        document.getElementById('sonde-name').textContent = `Naam: ${nearest.name || 'Onbekend'}`;
-        document.getElementById('sonde-dist').textContent = `Afstand: ${formatDistance(nearest.distance_m)}`;
-        document.getElementById('sonde-alt').textContent = `Hoogte: ${nearest.alt_m || '?'} m`;
+        document.getElementById('sonde-name').textContent = `Naam: ${nearest.place || 'Onbekend'}`;
+        document.getElementById('sonde-dist').textContent = `Afstand: ${formatDistance(nearest.distance)}`;
+        document.getElementById('sonde-alt').textContent = `Hoogte: ${nearest.alt || '?'} m`;
         document.getElementById('sonde-status').textContent = `Status: ${nearest.status || 'Onbekend'}`;
       } else {
         document.getElementById('sonde-name').textContent = 'Naam: ---';
@@ -163,7 +163,6 @@
 
         const lat = parseFloat(gps.lat) || 0;
         const lon = parseFloat(gps.lon) || 0;
-        const fix = gps.fix ?? true;
 
         // GPS marker
         if (!gpsMarker) {
@@ -193,7 +192,7 @@
 
         sondes.forEach(s => {
           if (!s.lat || !s.lon) return;
-          const dist = parseFloat(s.distance_m) || Infinity;
+          const dist = parseFloat(s.distance) || Infinity;
           if (dist < minDist) {
             nearest = s;
             minDist = dist;
@@ -206,9 +205,9 @@
           const icon = (s.status === 'NEED ATTENTION') ? blueDot : orangeDot;
           const marker = L.marker([s.lat, s.lon], { icon }).addTo(map);
           marker.bindPopup(`
-            <strong>${s.name || 'Onbekend'}</strong><br>
-            Afstand: ${isNaN(s.distance_m) ? '?' : formatDistance(s.distance_m)}<br>
-            Hoogte: ${s.alt_m || '?'} m<br>
+            <strong>${s.place || 'Onbekend'}</strong><br>
+            Afstand: ${isNaN(s.distance) ? '?' : formatDistance(s.distance)}<br>
+            Hoogte: ${s.alt || '?'} m<br>
             Status: ${s.status || 'Onbekend'}
           `);
           sondeMarkers.push(marker);
@@ -220,8 +219,6 @@
             [[lat, lon], [nearest.lat, nearest.lon]],
             { color: 'red', weight: 3, dashArray: '6,6', opacity: 0.9 }
           ).addTo(map);
-        } else {
-          console.warn('Geen geldige positie voor lijn:', nearest);
         }
 
         updateInfoPanel(gps, nearest);
