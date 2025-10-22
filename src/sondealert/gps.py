@@ -1,86 +1,72 @@
 import socket
 import threading
 import logging
-import re
 
 logger = logging.getLogger("gps")
 
-# Globale GPS-status
-last_position = {
-    "lat": None,
-    "lon": None,
-    "fix": False
-}
+_last_gps = {"lat": None, "lon": None, "fix": False}
 
-def parse_nmea_latlon(lat_str, ns, lon_str, ew):
-    """Converteer NMEA latitude/longitude naar decimale graden."""
+
+def parse_nmea_latlon(nmea_lat, nmea_ns, nmea_lon, nmea_ew):
+    """Converteer NMEA-formaat (DDMM.MMMM) naar decimale graden."""
     try:
-        lat_deg = float(lat_str[:2])
-        lat_min = float(lat_str[2:])
-        lon_deg = float(lon_str[:3])
-        lon_min = float(lon_str[3:])
+        lat_deg = float(nmea_lat[:2])
+        lat_min = float(nmea_lat[2:])
+        lon_deg = float(nmea_lon[:3])
+        lon_min = float(nmea_lon[3:])
         lat = lat_deg + lat_min / 60.0
         lon = lon_deg + lon_min / 60.0
-        if ns == "S":
+        if nmea_ns == "S":
             lat = -lat
-        if ew == "W":
+        if nmea_ew == "W":
             lon = -lon
         return lat, lon
     except Exception:
         return None, None
 
 
-def process_nmea_sentence(data):
-    """Verwerk één NMEA-zin en update de laatste GPS-positie."""
-    global last_position
-
-    # Match GGA of RMC
-    if data.startswith(("$GNGGA", "$GPGGA")):
-        parts = data.split(",")
-        if len(parts) > 5 and parts[2] and parts[4]:
-            lat, lon = parse_nmea_latlon(parts[2], parts[3], parts[4], parts[5])
-            if lat and lon:
-                last_position["lat"] = lat
-                last_position["lon"] = lon
-                last_position["fix"] = parts[6] not in ("0", "")
-                logger.info(f"Received GPS position: {lat:.5f}, {lon:.5f} (fix={last_position['fix']})")
-
-    elif data.startswith(("$GNRMC", "$GPRMC")):
-        parts = data.split(",")
-        if len(parts) > 6 and parts[3] and parts[5]:
-            lat, lon = parse_nmea_latlon(parts[3], parts[4], parts[5], parts[6])
-            if lat and lon:
-                last_position["lat"] = lat
-                last_position["lon"] = lon
-                last_position["fix"] = parts[2] == "A"
-                logger.info(f"Received GPS position (RMC): {lat:.5f}, {lon:.5f}")
-
-
 def start_gps_thread(settings):
-    """Start een achtergrondthread die luistert op UDP 5050."""
-    port = settings.get("GPS_PORT", 5050)
-    thread = threading.Thread(target=gps_listener, args=(port,), daemon=True)
-    thread.start()
+    """Start de thread die GPS-data luistert via UDP."""
+    t = threading.Thread(target=_gps_listener, args=(settings,), daemon=True)
+    t.start()
     logger.info("GPS thread started.")
 
 
-def gps_listener(port):
-    """Luister op de ingestelde UDP-poort naar NMEA-data."""
-    global last_position
+def _gps_listener(settings):
+    """Luistert continu naar NMEA-GPS-data via UDP."""
+    gps_port = int(settings.get("GPS_PORT", 5050))
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", port))
-    logger.info(f"Listening on UDP port {port} for GPS data")
+    sock.bind(("0.0.0.0", gps_port))
+    logger.info(f"Listening on UDP port {gps_port} for GPS data")
 
     while True:
         try:
             data, addr = sock.recvfrom(1024)
-            line = data.decode(errors="ignore").strip()
-            logger.debug(f"Received raw GPS data from {addr}: {line}")
-            process_nmea_sentence(line)
+            line = data.decode("utf-8", errors="ignore").strip()
+            if not line.startswith("$GP") and not line.startswith("$GN"):
+                continue
+
+            # --- RMC-zin (aanbevolen voor positie)
+            if line.startswith("$GPRMC") or line.startswith("$GNRMC"):
+                parts = line.split(",")
+                if len(parts) > 6 and parts[2] == "A":  # A = valid fix
+                    lat, lon = parse_nmea_latlon(parts[3], parts[4], parts[5], parts[6])
+                    if lat and lon:
+                        _last_gps.update({"lat": lat, "lon": lon, "fix": True})
+                        logger.info(f"Received GPS position: {lat:.5f}, {lon:.5f} (fix=True)")
+            # --- GGA-zin (ook geldig)
+            elif line.startswith("$GPGGA") or line.startswith("$GNGGA"):
+                parts = line.split(",")
+                if len(parts) > 6 and parts[6] != "0":  # fix indicator not 0
+                    lat, lon = parse_nmea_latlon(parts[2], parts[3], parts[4], parts[5])
+                    if lat and lon:
+                        _last_gps.update({"lat": lat, "lon": lon, "fix": True})
+                        logger.info(f"Received GPS position: {lat:.5f}, {lon:.5f} (fix=True)")
+
         except Exception as e:
-            logger.warning(f"Error in GPS listener: {e}")
+            logger.warning(f"GPS receive error: {e}")
 
 
 def get_last_position():
-    """Geef de laatst bekende GPS-positie."""
-    return last_position
+    """Retourneer de laatst bekende GPS-positie."""
+    return _last_gps
