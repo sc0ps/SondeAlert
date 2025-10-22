@@ -1,105 +1,81 @@
 import json
 import logging
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+
 from .gps import get_last_position
 from .proximity import get_nearby_sondes
 from .config import load_settings, save_settings
 
-log = logging.getLogger("web")
+logger = logging.getLogger("web")
 
-# De map waarin index.html en settings.html staan
 WEB_DIR = Path(__file__).parent / "web"
 
 
-class SondeAlertHandler(SimpleHTTPRequestHandler):
-    """HTTP-server voor SondeAlert: kaart, instellingen, en API-endpoints."""
-
-    def _set_headers(self, code=200, content_type="application/json"):
-        self.send_response(code)
-        self.send_header("Content-type", content_type)
-        self.end_headers()
-
+class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
-        path = self.path.split("?")[0]
-
-        # -----------------------
-        # JSON API ENDPOINTS
-        # -----------------------
-        if path == "/gps.json":
-            lat, lon = get_last_position()
-            self._set_headers()
-            self.wfile.write(json.dumps({"lat": lat, "lon": lon}).encode())
-
-        elif path == "/nearest.json":
-            lat, lon = get_last_position()
+        if self.path in ["/", "/index.html"]:
+            return self.serve_file("index.html")
+        elif self.path == "/settings.html":
+            return self.serve_file("settings.html")
+        elif self.path == "/settings.json":
+            return self.serve_json(load_settings())
+        elif self.path == "/gps.json":
+            gps_data = get_last_position()
+            return self.serve_json(gps_data)
+        elif self.path == "/nearest.json":
+            gps_data = get_last_position()
             settings = load_settings()
-            gps_data = {"lat": lat, "lon": lon}
             sondes = get_nearby_sondes(gps_data, settings)
-            self._set_headers()
-            self.wfile.write(json.dumps(sondes, indent=2).encode())
-
-        elif path == "/settings.json":
-            settings = load_settings()
-            self._set_headers()
-            self.wfile.write(json.dumps(settings, indent=2).encode())
-
-        # -----------------------
-        # HTML PAGINA'S
-        # -----------------------
-        elif path in ["/", "/index.html"]:
-            self._serve_file("index.html")
-        elif path in ["/settings", "/settings.html"]:
-            self._serve_file("settings.html")
-
-        # -----------------------
-        # ONBEKEND PAD
-        # -----------------------
+            return self.serve_json(sondes)
         else:
-            log.warning(f"404 - onbekende route: {self.path}")
             self.send_error(404, "File not found")
 
     def do_POST(self):
-        """Verwerkt POST naar /settings.json voor bijwerken instellingen."""
-        if self.path == "/settings.json":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
+        if self.path == "/save_settings":
+            length = int(self.headers.get("Content-Length", 0))
+            body = self.rfile.read(length)
             try:
                 data = json.loads(body)
                 save_settings(data)
-                self._set_headers(200)
-                self.wfile.write(b'{"status":"ok"}')
-                log.info("Instellingen bijgewerkt via webinterface.")
+                logger.info("Instellingen opgeslagen via webinterface.")
+                self.serve_json({"status": "ok"})
             except Exception as e:
-                log.error(f"Fout bij POST /settings.json: {e}")
-                self._set_headers(500)
-                self.wfile.write(json.dumps({"error": str(e)}).encode())
+                logger.error(f"Fout bij opslaan instellingen: {e}")
+                self.serve_json({"status": "error", "message": str(e)})
         else:
-            self.send_error(404, "File not found")
+            self.send_error(404, "Endpoint not found")
 
-    def _serve_file(self, filename):
-        """Serveert een HTML-bestand uit de webmap."""
+    # ---------- Hulpmethodes ----------
+    def serve_file(self, filename: str):
         filepath = WEB_DIR / filename
-        if filepath.exists():
-            self._set_headers(200, "text/html; charset=utf-8")
-            self.wfile.write(filepath.read_bytes())
+        if not filepath.exists():
+            self.send_error(404, "File not found")
+            return
+        content = filepath.read_bytes()
+        if filename.endswith(".html"):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(content)
+        elif filename.endswith(".json"):
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(content)
         else:
-            log.error(f"Bestand niet gevonden: {filepath}")
-            self.send_error(404, f"{filename} niet gevonden")
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(content)
+
+    def serve_json(self, data):
+        self.send_response(200)
+        self.send_header("Content-type", "application/json")
+        self.end_headers()
+        self.wfile.write(json.dumps(data, ensure_ascii=False).encode("utf-8"))
 
 
-def start_web_server(host="0.0.0.0", port=8080):
-    """Start de webserver in een aparte thread."""
-    server = ThreadingHTTPServer((host, port), SondeAlertHandler)
-    log.info(f"Webserver gestart op http://{host}:{port}/")
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        pass
-    finally:
-        server.server_close()
-        log.info("Webserver gestopt.")
-
-
-# Backwards compatibility met oude main.py
-start_server = start_web_server
+def start_server(host="0.0.0.0", port=8080):
+    server = HTTPServer((host, port), RequestHandler)
+    logger.info(f"Webserver gestart op http://{host}:{port}/")
+    server.serve_forever()
