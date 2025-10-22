@@ -15,7 +15,7 @@ services:
 
     # Deel de data-map (voor sondes.json en instellingen)
     volumes:
-      - ./data:/app/data
+      - ./data:/app/src/data
 
     # Omgevingsvariabelen (pas gerust aan)
     environment:

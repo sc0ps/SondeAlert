@@ -1,56 +1,88 @@
-# /app/src/sondealert/main.py
-import threading, logging, time
-from .config import load_settings, save_settings
-from . import radiosondy, gps, proximity, buzzer, webserver
-from .state import set_last_update
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+import logging
+import threading
+import time
+
+from sondealert import config, gps, proximity, radiosondy, webserver, buzzer
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [%(name)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+
 log = logging.getLogger("main")
+
+
+def async_update_list():
+    """Start de radiosonde-download in een aparte thread zodat de webserver blijft draaien."""
+    try:
+        log.info("[radiosondy] Asynchrone update gestart...")
+        radiosondy.update_sonde_list()
+        log.info("[radiosondy] Update voltooid.")
+    except Exception as e:
+        log.error(f"[radiosondy] Fout tijdens update: {e}")
+
+
+def start_threads():
+    """Start alle achtergrondthreads."""
+    # GPS
+    try:
+        threading.Thread(target=gps.start_gps_thread, daemon=True).start()
+        log.info("GPS-thread gestart.")
+    except Exception as e:
+        log.error(f"Kon GPS-thread niet starten: {e}")
+
+    # Proximity
+    try:
+        threading.Thread(target=proximity.start_proximity_loop, daemon=True).start()
+        log.info("Proximity-thread gestart.")
+    except Exception as e:
+        log.error(f"Kon proximity-thread niet starten: {e}")
+
+    # Buzzer
+    try:
+        threading.Thread(target=buzzer.start_buzzer_loop, daemon=True).start()
+        log.info("Buzzer-thread gestart.")
+    except Exception as e:
+        log.error(f"Kon buzzer-thread niet starten: {e}")
+
+    # Webserver
+    try:
+        threading.Thread(target=webserver.start_web_server, daemon=True).start()
+        log.info("Webserver gestart op http://0.0.0.0:8080/")
+    except Exception as e:
+        log.error(f"Kon webserver niet starten: {e}")
+
 
 def main():
     log.info("=== SondeAlert gestart ===")
-    settings = load_settings()
-    save_settings(settings)  # ensure file exists
-    log.info("Instellingen geladen: %s", settings)
 
-    # Update lijst bij start indien verouderd
+    # Laad of maak config
+    cfg = config.load_settings()
+    config.save_settings(cfg)
+    log.info(f"Instellingen geladen: {cfg}")
+
+    # Update radiosonde-lijst als deze verouderd is
     try:
-        if radiosondy.is_outdated(settings["UPDATE_HOURS"]):
+        if radiosondy.is_outdated():
             log.info("[radiosondy] Radiosonde-lijst verouderd — nieuwe download gestart.")
-            payload = radiosondy.update_sonde_list(settings)
-            set_last_update(payload["generated"], payload["count"])
+            threading.Thread(target=async_update_list, daemon=True).start()
         else:
-            # laad meta uit bestaande file
-            import json, os
-            from .config import SONDES_FILE
-            if os.path.exists(SONDES_FILE):
-                with open(SONDES_FILE,"r") as f:
-                    p = json.load(f)
-                    set_last_update(p.get("generated",0), p.get("count",0))
+            log.info("[radiosondy] Radiosonde-lijst is nog actueel.")
+            radiosondy.load_local_sondes()
     except Exception as e:
-        log.warning("Fout bij laden of bijwerken van radiosonde-lijst: %s", e)
+        log.error(f"Fout bij laden of bijwerken van radiosonde-lijst: {e}")
 
-    # Threads
-    threading.Thread(target=gps.start_gps_listener, args=(settings["GPS_PORT"],), daemon=True).start()
-    threading.Thread(target=proximity.proximity_loop, args=(settings,), daemon=True).start()
-    threading.Thread(target=buzzer.buzzer_loop, args=(settings,), daemon=True).start()
-    threading.Thread(target=webserver.serve, args=(settings["BIND_HOST"], settings["BIND_PORT"]), daemon=True).start()
+    # Start alle componenten
+    start_threads()
 
-    # Periodieke auto-update (1x per uur check)
-    def updater():
-        while True:
-            time.sleep(3600)
-            try:
-                if radiosondy.is_outdated(settings["UPDATE_HOURS"]):
-                    payload = radiosondy.update_sonde_list(load_settings())
-                    set_last_update(payload["generated"], payload["count"])
-            except Exception as e:
-                log.warning("Updater-fout: %s", e)
-
-    threading.Thread(target=updater, daemon=True).start()
-
+    # Hoofdloop
     while True:
         time.sleep(1)
+
 
 if __name__ == "__main__":
     main()
