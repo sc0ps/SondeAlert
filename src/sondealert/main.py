@@ -4,59 +4,43 @@ from . import gps, proximity, radiosondy, webserver, config
 
 logger = logging.getLogger("main")
 
-
 def main():
     logger.info("=== SondeAlert gestart ===")
 
-    # 🔧 Instellingen laden
-    try:
-        settings = config.load_settings()
-        logger.info(f"Instellingen geladen: {settings}")
-    except Exception as e:
-        logger.error(f"Fout bij laden van instellingen: {e}")
-        return
+    # Laad instellingen
+    settings = config.load_settings()
+    config.save_settings(settings)
+    logger.info(f"Instellingen geladen: {settings}")
 
-    # 📡 Radiosonde-lijst bijwerken indien verouderd
+    # === Update of laad sondelijst ===
     try:
-        if radiosondy.is_outdated(settings):
-            radiosondy.update_sonde_list()
-        else:
-            logger.info("Bestaande lijst is nog actueel.")
+        sondes = radiosondy.update_sondes(settings)   # ✅ juiste functie
+        logger.info(f"{len(sondes)} sondes geladen uit /app/data/sondes.json")
     except Exception as e:
         logger.error(f"Fout bij laden of bijwerken van radiosonde-lijst: {e}")
 
-    # 🛰️ Start GPS-thread
+    # === Start GPS-thread ===
     try:
         gps.start_gps_thread(settings)
         logger.info("GPS-thread gestart.")
     except Exception as e:
         logger.error(f"Kon GPS-thread niet starten: {e}")
 
-    # 📍 Start proximity-thread
+    # === Start proximity-thread ===
     try:
-        proximity_thread = threading.Thread(
+        threading.Thread(
             target=proximity.start_proximity_loop, args=(settings,), daemon=True
-        )
-        proximity_thread.start()
+        ).start()
         logger.info("Proximity-thread gestart.")
     except Exception as e:
         logger.error(f"Kon proximity-thread niet starten: {e}")
 
-    # 🌐 Start webserver
+    # === Start webserver ===
     try:
         webserver.start_server(settings)
-        logger.info(
-            f"Webserver gestart op http://{settings.get('BIND_HOST', '0.0.0.0')}:{settings.get('BIND_PORT', 8080)}/"
-        )
     except Exception as e:
-        logger.error(f"Webserver-fout: {e}")
+        logger.error(f"Webserver-fout: {e}", exc_info=True)
 
 
 if __name__ == "__main__":
-    # Basis loggingconfiguratie
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-        datefmt="%H:%M:%S",
-    )
     main()
