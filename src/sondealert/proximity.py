@@ -1,53 +1,58 @@
-# /app/src/sondealert/proximity.py
-import json, math, time, logging, os
-from .config import SONDES_FILE
-from .state import get_gps, set_nearest
+import logging
+import math
+import time
+from sondealert import config, radiosondy, gps
 
-def _deg2rad(d): return d*math.pi/180.0
-def haversine(lat1, lon1, lat2, lon2):
-    R=6371000.0
-    dLat=_deg2rad(lat2-lat1); dLon=_deg2rad(lon2-lon1)
-    a=math.sin(dLat/2)**2+math.cos(_deg2rad(lat1))*math.cos(_deg2rad(lat2))*math.sin(dLon/2)**2
-    return R*2*math.atan2(math.sqrt(a), math.sqrt(1-a))
+log = logging.getLogger("proximity")
 
-def load_sondes():
-    if not os.path.exists(SONDES_FILE): return {"generated":0,"count":0,"items":[]}
-    with open(SONDES_FILE,"r") as f:
-        return json.load(f)
+_nearby_sondes = []
 
-def compute_nearest(settings):
-    gps = get_gps()
-    if not gps.get("fix"): 
-        set_nearest(None, None, None); 
-        return
 
-    data = load_sondes()
-    items = data.get("items", [])
-    if not items:
-        set_nearest(None, None, None); 
-        return
-
-    glat, glon = gps["lat"], gps["lon"]
-    best, best_d = None, None
-    for it in items:
-        d = haversine(glat, glon, it["lat"], it["lon"])
-        if best_d is None or d < best_d:
-            best, best_d = it, d
-
-    # ring-level per 2 km
-    thr = float(settings["NEAR_THRESHOLD_M"])
-    if best_d is None or best_d > thr:
-        set_nearest(None, None, None); 
-        return
-
-    ring = max(1, int((thr - best_d) // 2000) + 1)  # 2km ringen, dichterbij = hogere ring
-    set_nearest(best, best_d, ring)
-
-def proximity_loop(settings):
-    logging.info("[proximity] Afstandsbepaling gestart (radius %.1f km)", float(settings["NEAR_THRESHOLD_M"])/1000.0)
+def start():
+    """Thread die om de 5 sec sondes binnen de ingestelde straal zoekt."""
+    log.info("Afstandsbepaling gestart.")
     while True:
         try:
-            compute_nearest(settings)
+            update_nearby()
         except Exception as e:
-            logging.warning("[proximity] Fout: %s", e)
-        time.sleep(1)
+            log.warning(f"Fout in proximity-loop: {e}")
+        time.sleep(5)
+
+
+def update_nearby():
+    """Update de lijst van sondes binnen de ingestelde afstand."""
+    lat, lon, fix = gps.get_last_position()
+    if not fix or lat is None or lon is None:
+        return
+
+    sondes = radiosondy.get_all_sondes()
+    settings = config.load_settings()
+    radius = float(settings.get("NEAR_THRESHOLD_M", 15000))
+
+    nearby = []
+    for s in sondes:
+        try:
+            dist = haversine(lat, lon, s["lat"], s["lon"])
+            if dist <= radius:
+                nearby.append({**s, "distance": dist})
+        except Exception:
+            continue
+
+    global _nearby_sondes
+    _nearby_sondes = sorted(nearby, key=lambda x: x["distance"])
+    log.info(f"Gevonden {len(_nearby_sondes)} sondes binnen {radius/1000:.1f} km.")
+
+
+def get_nearby_sondes():
+    """Retourneert huidige lijst sondes binnen afstand."""
+    return _nearby_sondes
+
+
+def haversine(lat1, lon1, lat2, lon2):
+    """Bereken afstand in meters tussen twee coördinaten."""
+    R = 6371000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))

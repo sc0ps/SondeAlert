@@ -4,7 +4,6 @@
 import logging
 import threading
 import time
-
 from sondealert import config, gps, proximity, radiosondy, webserver, buzzer
 
 logging.basicConfig(
@@ -17,7 +16,7 @@ log = logging.getLogger("main")
 
 
 def async_update_list():
-    """Start de radiosonde-download in een aparte thread zodat de webserver blijft draaien."""
+    """Voer de radiosonde-update uit in een aparte thread."""
     try:
         log.info("[radiosondy] Asynchrone update gestart...")
         radiosondy.update_sonde_list()
@@ -27,29 +26,25 @@ def async_update_list():
 
 
 def start_threads():
-    """Start alle achtergrondthreads."""
-    # GPS
+    """Start de achtergrondthreads."""
     try:
-        threading.Thread(target=gps.start_gps_thread, daemon=True).start()
+        threading.Thread(target=gps.start, daemon=True).start()
         log.info("GPS-thread gestart.")
     except Exception as e:
         log.error(f"Kon GPS-thread niet starten: {e}")
 
-    # Proximity
     try:
-        threading.Thread(target=proximity.start_proximity_loop, daemon=True).start()
+        threading.Thread(target=proximity.start, daemon=True).start()
         log.info("Proximity-thread gestart.")
     except Exception as e:
         log.error(f"Kon proximity-thread niet starten: {e}")
 
-    # Buzzer
     try:
-        threading.Thread(target=buzzer.start_buzzer_loop, daemon=True).start()
+        threading.Thread(target=buzzer.start, daemon=True).start()
         log.info("Buzzer-thread gestart.")
     except Exception as e:
         log.error(f"Kon buzzer-thread niet starten: {e}")
 
-    # Webserver
     try:
         threading.Thread(target=webserver.start_web_server, daemon=True).start()
         log.info("Webserver gestart op http://0.0.0.0:8080/")
@@ -60,12 +55,12 @@ def start_threads():
 def main():
     log.info("=== SondeAlert gestart ===")
 
-    # Laad of maak config
+    # 1️⃣ Config laden
     cfg = config.load_settings()
     config.save_settings(cfg)
     log.info(f"Instellingen geladen: {cfg}")
 
-    # Update radiosonde-lijst als deze verouderd is
+    # 2️⃣ Controleer of lijst update nodig is
     try:
         if radiosondy.is_outdated():
             log.info("[radiosondy] Radiosonde-lijst verouderd — nieuwe download gestart.")
@@ -76,10 +71,10 @@ def main():
     except Exception as e:
         log.error(f"Fout bij laden of bijwerken van radiosonde-lijst: {e}")
 
-    # Start alle componenten
+    # 3️⃣ Start achtergrondprocessen
     start_threads()
 
-    # Hoofdloop
+    # 4️⃣ Hoofdloop
     while True:
         time.sleep(1)
 
