@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,23 +7,37 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <style>
+    :root {
+      --bg-dark: #121212;
+      --panel-dark: #1e1e1e;
+      --accent: #1e90ff;
+      --text-light: #e0e0e0;
+    }
+
     body {
       margin: 0;
       font-family: system-ui, sans-serif;
-      background-color: #f7f9fb;
+      background-color: var(--bg-dark);
+      color: var(--text-light);
       display: flex;
       flex-direction: column;
       height: 100vh;
     }
 
     header {
-      background-color: #005bbb;
-      color: white;
+      background-color: #0a0a0a;
+      color: var(--text-light);
       padding: 10px 15px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    header a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
     }
 
     #map {
@@ -32,81 +46,112 @@
     }
 
     #info-panel {
-      background: white;
-      border-top: 3px solid #005bbb;
+      background: var(--panel-dark);
+      border-top: 2px solid var(--accent);
       padding: 15px;
       display: flex;
       justify-content: space-around;
       flex-wrap: wrap;
-      box-shadow: 0 -2px 5px rgba(0,0,0,0.1);
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.7);
     }
 
     .info-box {
       flex: 1;
       min-width: 250px;
-      margin: 5px;
+      margin: 6px;
       padding: 10px;
-      background: #f9fafc;
-      border-radius: 8px;
-      border: 1px solid #ddd;
+      background: #2a2a2a;
+      border-radius: 10px;
+      border: 1px solid #333;
     }
 
     .info-box h3 {
       margin-top: 0;
       font-size: 1rem;
-      color: #005bbb;
+      color: var(--accent);
       display: flex;
       align-items: center;
       gap: 6px;
     }
 
-    .info-box p {
-      margin: 3px 0;
-      font-size: 0.9rem;
+    footer {
+      text-align: center;
+      background: #0a0a0a;
+      color: #888;
+      font-size: 0.85rem;
+      padding: 10px;
     }
 
-    .status-ok {
-      color: green;
-      font-weight: bold;
+    .leaflet-control-layers {
+      background: rgba(30,30,30,0.9);
+      color: #fff;
+      border-radius: 6px;
+      font-size: 0.85rem;
     }
 
-    .status-warn {
-      color: #e67e22;
-      font-weight: bold;
-    }
+    .status-ok { color: #6be075; font-weight: bold; }
+    .status-warn { color: #ffad33; font-weight: bold; }
   </style>
 </head>
 <body>
   <header>
-    <div><strong>🛰️ SondeAlert</strong></div>
-    <div><a href="/settings.html" style="color:white; text-decoration:none;">⚙️ Instellingen</a></div>
+    <div><strong>SondeAlert</strong></div>
+    <div><a href="/settings.html">Settings</a></div>
   </header>
 
   <div id="map"></div>
 
   <div id="info-panel">
     <div class="info-box">
-      <h3>📡 GPS-status</h3>
-      <p id="gps-status">Status: onbekend</p>
+      <h3>GPS Status</h3>
+      <p id="gps-status">Status: unknown</p>
       <p id="gps-coords">Lat: ---, Lon: ---</p>
     </div>
 
     <div class="info-box">
-      <h3>🛰️ Dichtstbijzijnde sonde</h3>
-      <p id="sonde-name">Naam: ---</p>
-      <p id="sonde-dist">Afstand: ---</p>
-      <p id="sonde-alt">Hoogte: ---</p>
+      <h3>Nearest Sonde</h3>
+      <p id="sonde-name">Name: ---</p>
+      <p id="sonde-dist">Distance: ---</p>
+      <p id="sonde-alt">Altitude: ---</p>
       <p id="sonde-status">Status: ---</p>
     </div>
   </div>
 
-  <script>
-    const map = L.map('map').setView([52.1, 4.3], 9);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap',
-    }).addTo(map);
+  <footer>© 2025 SondeAlert Developed by Scops Owl Designs</footer>
 
-    // === Iconen ===
+  <script>
+    // === Base map layers ===
+    const osmMap = L.tileLayer(
+      'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      { attribution: '&copy; OpenStreetMap contributors' }
+    );
+
+    const darkMap = L.tileLayer(
+      'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      { attribution: '&copy; CartoDB DarkMatter' }
+    );
+
+    const satMap = L.tileLayer(
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      { attribution: 'Tiles © Esri' }
+    );
+
+    // === Initialize map with OSM as default ===
+    const map = L.map('map', {
+      center: [52.1, 4.3],
+      zoom: 9,
+      layers: [osmMap]
+    });
+
+    // === Layer control ===
+    const baseLayers = {
+      "️OpenStreetMap": osmMap,
+      "Dark Mode": darkMap,
+      "Satellite": satMap
+    };
+    L.control.layers(baseLayers, null, { position: 'topright' }).addTo(map);
+
+    // === Custom icons ===
     const myIcon = L.icon({
       iconUrl: '/static/my-marker.png',
       iconSize: [40, 40],
@@ -117,14 +162,15 @@
     function createDot(color) {
       return L.divIcon({
         html: `<div style="width:16px;height:16px;background:${color};
-               border-radius:50%;border:2px solid white;box-shadow:0 0 3px rgba(0,0,0,0.5);"></div>`,
+                border-radius:50%;border:2px solid white;
+                box-shadow:0 0 3px rgba(0,0,0,0.8);"></div>`,
         className: '',
         iconSize: [16, 16],
       });
     }
 
-    const orangeDot = createDot('orange');
-    const blueDot = createDot('#007bff');
+    const orangeDot = createDot('orange');  // UNKNOWN
+    const blueDot = createDot('#1e90ff');   // NEED ATTENTION
 
     let gpsMarker = null;
     let sondeMarkers = [];
@@ -132,27 +178,23 @@
 
     function formatDistance(m) {
       if (!m || isNaN(m)) return '?';
-      if (m < 1000) return `${m.toFixed(0)} m`;
-      return `${(m / 1000).toFixed(2)} km`;
+      return m < 1000 ? `${m.toFixed(0)} m` : `${(m / 1000).toFixed(2)} km`;
     }
 
     function updateInfoPanel(gps, nearest) {
       document.getElementById('gps-status').innerHTML = gps.fix
         ? `<span class="status-ok">✅ Fix OK</span>`
-        : `<span class="status-warn">⚠️ Geen signaal</span>`;
+        : `<span class="status-warn">⚠️ No Signal</span>`;
       document.getElementById('gps-coords').textContent =
         `Lat: ${gps.lat ? gps.lat.toFixed(5) : '---'}, Lon: ${gps.lon ? gps.lon.toFixed(5) : '---'}`;
 
       if (nearest) {
-        document.getElementById('sonde-name').textContent = `Naam: ${nearest.place || 'Onbekend'}`;
-        document.getElementById('sonde-dist').textContent = `Afstand: ${formatDistance(nearest.distance)}`;
-        document.getElementById('sonde-alt').textContent = `Hoogte: ${nearest.alt || '?'} m`;
-        document.getElementById('sonde-status').textContent = `Status: ${nearest.status || 'Onbekend'}`;
+        document.getElementById('sonde-name').textContent = `Name: ${nearest.place || 'Unknown'}`;
+        document.getElementById('sonde-dist').textContent = `Distance: ${formatDistance(nearest.distance)}`;
+        document.getElementById('sonde-alt').textContent = `Altitude: ${nearest.alt || '?'} m`;
+        document.getElementById('sonde-status').textContent = `Status: ${nearest.status || 'Unknown'}`;
       } else {
-        document.getElementById('sonde-name').textContent = 'Naam: ---';
-        document.getElementById('sonde-dist').textContent = 'Afstand: ---';
-        document.getElementById('sonde-alt').textContent = 'Hoogte: ---';
-        document.getElementById('sonde-status').textContent = 'Status: ---';
+        document.querySelectorAll('#info-panel p').forEach(p => p.textContent = '---');
       }
     }
 
@@ -160,71 +202,41 @@
       try {
         const gps = await fetch('/gps.json').then(r => r.json());
         const sondes = await fetch('/nearest.json').then(r => r.json());
-
         const lat = parseFloat(gps.lat) || 0;
         const lon = parseFloat(gps.lon) || 0;
 
-        // GPS marker
-        if (!gpsMarker) {
-          gpsMarker = L.marker([lat, lon], { icon: myIcon }).addTo(map);
-          map.setView([lat, lon], 10);
-        } else {
-          gpsMarker.setLatLng([lat, lon]);
-        }
+        if (!gpsMarker) gpsMarker = L.marker([lat, lon], { icon: myIcon }).addTo(map);
+        else gpsMarker.setLatLng([lat, lon]);
 
-        // Reset markers & lijn
         sondeMarkers.forEach(m => map.removeLayer(m));
         sondeMarkers = [];
-        if (connectionLine) {
-          map.removeLayer(connectionLine);
-          connectionLine = null;
-        }
+        if (connectionLine) map.removeLayer(connectionLine);
 
         if (!Array.isArray(sondes) || sondes.length === 0) {
-          console.warn('Geen sondes ontvangen.');
           updateInfoPanel(gps, null);
           return;
         }
 
-        // Zoek dichtstbijzijnde
-        let nearest = null;
-        let minDist = Infinity;
+        let nearest = sondes.reduce((a, b) => (a.distance < b.distance ? a : b));
 
         sondes.forEach(s => {
-          if (!s.lat || !s.lon) return;
-          const dist = parseFloat(s.distance) || Infinity;
-          if (dist < minDist) {
-            nearest = s;
-            minDist = dist;
-          }
-        });
-
-        // Voeg markers toe
-        sondes.forEach(s => {
-          if (!s.lat || !s.lon) return;
           const icon = (s.status === 'NEED ATTENTION') ? blueDot : orangeDot;
           const marker = L.marker([s.lat, s.lon], { icon }).addTo(map);
           marker.bindPopup(`
-            <strong>${s.place || 'Onbekend'}</strong><br>
-            Afstand: ${isNaN(s.distance) ? '?' : formatDistance(s.distance)}<br>
-            Hoogte: ${s.alt || '?'} m<br>
-            Status: ${s.status || 'Onbekend'}
+            <strong>${s.place || 'Unknown'}</strong><br>
+            Distance: ${formatDistance(s.distance)}<br>
+            Altitude: ${s.alt || '?'} m<br>
+            Status: ${s.status || 'Unknown'}
           `);
           sondeMarkers.push(marker);
         });
 
-        // Rode lijn tekenen
-        if (nearest && nearest.lat && nearest.lon && lat && lon) {
-          connectionLine = L.polyline(
-            [[lat, lon], [nearest.lat, nearest.lon]],
-            { color: 'red', weight: 3, dashArray: '6,6', opacity: 0.9 }
-          ).addTo(map);
-        }
+        if (nearest && nearest.lat && nearest.lon && lat && lon)
+          connectionLine = L.polyline([[lat, lon], [nearest.lat, nearest.lon]], { color: '#ff4444', weight: 3 }).addTo(map);
 
         updateInfoPanel(gps, nearest);
-
       } catch (err) {
-        console.error('Update-fout:', err);
+        console.error('Update error:', err);
       }
     }
 

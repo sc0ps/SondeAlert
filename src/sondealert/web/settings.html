@@ -1,60 +1,157 @@
 <!DOCTYPE html>
-<html lang="nl">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>SondeAlert Instellingen</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SondeAlert Settings</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; background: #f7f7f7; }
-    label { display: block; margin-top: 10px; }
-    input { margin-left: 10px; }
-    button { margin-top: 15px; padding: 8px 14px; font-size: 14px; }
-    #status { margin-top: 10px; font-weight: bold; }
+    body {
+      margin: 0;
+      background: #121212;
+      color: #e0e0e0;
+      font-family: system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+
+    header {
+      background: #0a0a0a;
+      color: #e0e0e0;
+      padding: 12px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+
+    header h1 { margin: 0; font-size: 1.2rem; }
+
+    main {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    form {
+      background: #1e1e1e;
+      padding: 25px 35px;
+      border-radius: 12px;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+      max-width: 480px;
+      width: 100%;
+    }
+
+    label {
+      display: block;
+      margin-top: 15px;
+      font-weight: 600;
+      color: #ccc;
+    }
+
+    input,
+    select {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px;
+      margin-top: 5px;
+      border-radius: 6px;
+      border: 1px solid #444;
+      background: #2b2b2b;
+      color: #eee;
+      font-size: 1rem;
+      appearance: none;
+    }
+
+    select {
+      padding-right: 35px; /* makes dropdown arrow align neatly */
+    }
+
+    button {
+      margin-top: 25px;
+      padding: 12px 20px;
+      background: #1e90ff;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      width: 100%;
+      transition: background 0.3s;
+    }
+
+    button:hover { background: #0077e6; }
+
+    .back-btn {
+      background: #444;
+      margin-right: 10px;
+      width: auto;
+    }
+
+    footer {
+      text-align: center;
+      padding: 10px;
+      background: #0a0a0a;
+      color: #888;
+      font-size: 0.85rem;
+    }
   </style>
 </head>
 <body>
-  <h1>SondeAlert Instellingen</h1>
-  <form id="settingsForm">
-    <label>
-      Maximale afstand (NEAR_THRESHOLD_M):
-      <input type="number" id="NEAR_THRESHOLD_M" name="NEAR_THRESHOLD_M">
-    </label>
-    <label>
-      Hoogtelimiet (ALT_MAX_M):
-      <input type="number" id="ALT_MAX_M" name="ALT_MAX_M">
-    </label>
-    <label>
-      Buzzer aan:
-      <input type="checkbox" id="BUZZER_ENABLED" name="BUZZER_ENABLED">
-    </label>
-    <button type="submit">Opslaan</button>
-  </form>
+  <header>
+    <h1>Settings</h1>
+    <button class="back-btn" onclick="window.location.href='index.html'">← Back</button>
+  </header>
 
-  <p id="status"></p>
+  <main>
+    <form id="settings-form">
+      <label for="nearThreshold">Maximum distance (meters):</label>
+      <input type="number" id="nearThreshold" min="1000" step="500">
+
+      <label for="altMax">Maximum altitude (meters):</label>
+      <input type="number" id="altMax" min="100" step="100">
+
+      <label for="updateHours">DB Update interval (hours):</label>
+      <input type="number" id="updateHours" min="1" step="1">
+
+      <label for="buzzer">Enable buzzer:</label>
+      <select id="buzzer">
+        <option value="true">Yes</option>
+        <option value="false">No</option>
+      </select>
+
+      <button type="submit">Save Settings</button>
+    </form>
+  </main>
+
+  <footer>© 2025 SondeAlert — Developed by Scops Owl Designs</footer>
 
   <script>
     async function loadSettings() {
-      const resp = await fetch('/settings.json');
-      const settings = await resp.json();
-      document.getElementById('NEAR_THRESHOLD_M').value = settings.NEAR_THRESHOLD_M;
-      document.getElementById('ALT_MAX_M').value = settings.ALT_MAX_M;
-      document.getElementById('BUZZER_ENABLED').checked = settings.BUZZER_ENABLED;
+      const r = await fetch('/settings.json');
+      const s = await r.json();
+      nearThreshold.value = s.NEAR_THRESHOLD_M || 15000;
+      altMax.value = s.ALT_MAX_M || 600;
+      updateHours.value = s.UPDATE_HOURS || 24;
+      buzzer.value = s.BUZZER_ENABLED ? 'true' : 'false';
     }
 
-    document.getElementById('settingsForm').addEventListener('submit', async e => {
+    document.getElementById('settings-form').onsubmit = async e => {
       e.preventDefault();
-      const newSettings = {
-        ...await (await fetch('/settings.json')).json(),
-        NEAR_THRESHOLD_M: parseInt(document.getElementById('NEAR_THRESHOLD_M').value),
-        ALT_MAX_M: parseInt(document.getElementById('ALT_MAX_M').value),
-        BUZZER_ENABLED: document.getElementById('BUZZER_ENABLED').checked
+      const data = {
+        NEAR_THRESHOLD_M: parseInt(nearThreshold.value),
+        ALT_MAX_M: parseInt(altMax.value),
+        UPDATE_HOURS: parseInt(updateHours.value),
+        BUZZER_ENABLED: buzzer.value === 'true',
       };
-      const resp = await fetch('/settings.json', {
+      await fetch('/save_settings', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newSettings)
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
       });
-      document.getElementById('status').textContent = resp.ok ? '✅ Instellingen opgeslagen!' : '❌ Fout bij opslaan.';
-    });
+      alert('Settings saved successfully.');
+    };
 
     loadSettings();
   </script>
