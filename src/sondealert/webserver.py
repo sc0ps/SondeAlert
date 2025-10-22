@@ -1,93 +1,106 @@
 import json
+import os
 import logging
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from .gps import get_last_position
-from .proximity import get_nearby_sondes
-from .config import load_settings, save_settings
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import urlparse
+from . import gps, config
 
 logger = logging.getLogger("web")
 
+WEB_DIR = "/app/src/sondealert/web"
+DATA_DIR = "/app/data"
 
-class WebHandler(BaseHTTPRequestHandler):
-    """HTTP-handler voor SondeAlert-webinterface."""
-
-    def _set_headers(self, code=200, content_type="application/json"):
-        self.send_response(code)
-        self.send_header("Content-Type", content_type)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
+class WebHandler(SimpleHTTPRequestHandler):
+    def log_message(self, format, *args):
+        # Geen standaard logging naar stderr
+        return
 
     def do_GET(self):
-        """Verwerkt GET-verzoeken (pagina’s en JSON-data)."""
+        parsed = urlparse(self.path)
+        path = parsed.path
+
         try:
-            if self.path == "/gps.json":
-                gps_data = get_last_position()
-                self._set_headers()
-                self.wfile.write(json.dumps(gps_data).encode("utf-8"))
+            # === GPS-data ===
+            if path == "/gps.json":
+                gps_data = gps.get_last_position()
+                data = json.dumps(gps_data or {}, indent=2).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(data)
+                return
 
-            elif self.path == "/settings.json":
-                settings = load_settings()
-                self._set_headers()
-                self.wfile.write(json.dumps(settings).encode("utf-8"))
+            # === Nearest sonde JSON ===
+            elif path == "/nearest.json":
+                nearest_path = os.path.join(DATA_DIR, "nearest.json")
+                if os.path.exists(nearest_path):
+                    with open(nearest_path, "r") as f:
+                        data = f.read().encode()
+                else:
+                    data = b"[]"
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(data)
+                return
 
-            elif self.path == "/nearest.json":
-                settings = load_settings()
-                gps_data = get_last_position()
-                sondes = get_nearby_sondes(gps_data, settings)
-                self._set_headers()
-                self.wfile.write(json.dumps(sondes).encode("utf-8"))
+            # === Settings JSON ===
+            elif path == "/settings.json":
+                settings = config.load_settings()
+                data = json.dumps(settings, indent=2).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(data)
+                return
 
-            elif self.path == "/" or self.path == "/index.html":
-                self._serve_html("/app/src/sondealert/web/index.html")
+            # === HTML pagina’s ===
+            elif path in ("/", "/index.html"):
+                return self.serve_file("index.html")
+            elif path == "/settings.html":
+                return self.serve_file("settings.html")
 
-            elif self.path == "/settings.html":
-                self._serve_html("/app/src/sondealert/web/settings.html")
-
+            # === Onbekend pad ===
             else:
                 self.send_error(404, "File not found")
 
         except Exception as e:
-            logger.error(f"Error handling GET {self.path}: {e}", exc_info=True)
-            self.send_error(500, f"Internal server error: {e}")
+            logger.error(f"Webserver-fout bij GET {path}: {e}", exc_info=True)
+            self.send_error(500, "Internal server error")
+
+    def serve_file(self, filename):
+        path = os.path.join(WEB_DIR, filename)
+        if not os.path.exists(path):
+            self.send_error(404, "File not found")
+            return
+        with open(path, "rb") as f:
+            data = f.read()
+        self.send_response(200)
+        if filename.endswith(".html"):
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
-        """Verwerkt POST-verzoeken (voor instellingen)."""
+        path = urlparse(self.path).path
         try:
-            if self.path == "/save_settings":
-                content_len = int(self.headers.get("Content-Length", 0))
-                body = self.rfile.read(content_len)
-                data = json.loads(body.decode("utf-8"))
-                save_settings(data)
-                self._set_headers()
-                self.wfile.write(json.dumps({"status": "ok"}).encode("utf-8"))
+            if path == "/save_settings":
+                length = int(self.headers.get("Content-Length", 0))
+                raw = self.rfile.read(length)
+                settings = json.loads(raw.decode())
+                config.save_settings(settings)
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"Settings saved")
             else:
-                self.send_error(404, "Endpoint not found")
-
+                self.send_error(404, "Not found")
         except Exception as e:
-            logger.error(f"Error handling POST {self.path}: {e}", exc_info=True)
-            self.send_error(500, f"Internal server error: {e}")
-
-    def _serve_html(self, path):
-        """Serveert HTML-bestanden vanaf de opgegeven locatie."""
-        try:
-            with open(path, "rb") as f:
-                content = f.read()
-            self._set_headers(200, "text/html")
-            self.wfile.write(content)
-        except FileNotFoundError:
-            self.send_error(404, f"HTML file not found: {path}")
-        except Exception as e:
-            logger.error(f"Error serving HTML file {path}: {e}", exc_info=True)
-            self.send_error(500, f"Internal server error: {e}")
-
+            logger.error(f"Fout bij POST {path}: {e}", exc_info=True)
+            self.send_error(500, "Internal server error")
 
 def start_server(settings):
-    """Start de ingebouwde HTTP-server."""
-    try:
-        host = settings.get("BIND_HOST", "0.0.0.0")
-        port = settings.get("BIND_PORT", 8080)
-        server = HTTPServer((host, port), WebHandler)
-        logger.info(f"Webserver gestart op http://{host}:{port}/")
-        server.serve_forever()
-    except Exception as e:
-        logger.error(f"Webserver kon niet worden gestart: {e}", exc_info=True)
+    host = settings.get("BIND_HOST", "0.0.0.0")
+    port = int(settings.get("BIND_PORT", 8080))
+    server = ThreadingHTTPServer((host, port), WebHandler)
+    logger.info(f"Webserver gestart op http://{host}:{port}/")
+    server.serve_forever()
