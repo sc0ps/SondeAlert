@@ -1,14 +1,14 @@
-import json
-import logging
-from pathlib import Path
+# /app/src/sondealert/config.py
+import json, os, logging
 
-log = logging.getLogger("config")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(os.path.dirname(BASE_DIR), "data")
+os.makedirs(DATA_DIR, exist_ok=True)
 
-DATA_DIR = Path(__file__).parent.parent / "data"
-SETTINGS_FILE = DATA_DIR / "settings.json"
+SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
+SONDES_FILE   = os.path.join(DATA_DIR, "sondes.json")
 
-# Standaardinstellingen
-DEFAULT_SETTINGS = {
+DEFAULTS = {
     "MONTHS_BACK": 24,
     "STATUS_KEEP": ["UNKNOWN", "NEED ATTENTION"],
     "LAUNCH_FILTERS": ["DE BILT (NL)", "DE BILT"],
@@ -21,35 +21,19 @@ DEFAULT_SETTINGS = {
     "BIND_PORT": 8080
 }
 
-
-def ensure_settings_file():
-    """Maakt settings.json aan als het niet bestaat."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    if not SETTINGS_FILE.exists():
-        save_settings(DEFAULT_SETTINGS)
-
-
 def load_settings():
-    """Laadt de instellingen uit settings.json."""
-    ensure_settings_file()
-    try:
-        with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-            settings = json.load(f)
-        # Vul ontbrekende velden aan met defaults
-        for k, v in DEFAULT_SETTINGS.items():
-            settings.setdefault(k, v)
-        return settings
-    except Exception as e:
-        log.error(f"Fout bij laden instellingen: {e}")
-        return DEFAULT_SETTINGS
+    s = DEFAULTS.copy()
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r") as f:
+                s.update(json.load(f))
+        except Exception as e:
+            logging.warning("Kon settings.json niet laden: %s", e)
+    # normaliseer
+    s["STATUS_KEEP"] = [x.upper() for x in s.get("STATUS_KEEP", [])]
+    return s
 
-
-def save_settings(settings: dict):
-    """Slaat instellingen op in settings.json."""
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=2)
-        log.info(f"Instellingen opgeslagen in {SETTINGS_FILE}")
-    except Exception as e:
-        log.error(f"Fout bij opslaan instellingen: {e}")
+def save_settings(s):
+    with open(SETTINGS_FILE, "w") as f:
+        json.dump(s, f, indent=2)
+    logging.info("[config] Instellingen opgeslagen in %s", SETTINGS_FILE)

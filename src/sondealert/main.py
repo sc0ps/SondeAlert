@@ -1,79 +1,56 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# /app/src/sondealert/main.py
+import threading, logging, time
+from .config import load_settings, save_settings
+from . import radiosondy, gps, proximity, buzzer, webserver
+from .state import set_last_update
 
-import threading
-import logging
-import time
-
-from . import gps, proximity, radiosondy, webserver, config
-
-logger = logging.getLogger("main")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
-    datefmt="%H:%M:%S",
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s [%(name)s] %(message)s")
+log = logging.getLogger("main")
 
 def main():
-    logger.info("=== SondeAlert gestart ===")
+    log.info("=== SondeAlert gestart ===")
+    settings = load_settings()
+    save_settings(settings)  # ensure file exists
+    log.info("Instellingen geladen: %s", settings)
 
-    # === 1. Laad instellingen ===
+    # Update lijst bij start indien verouderd
     try:
-        settings = config.load_settings()
-        config.save_settings(settings)
-        logger.info(f"Instellingen geladen: {settings}")
+        if radiosondy.is_outdated(settings["UPDATE_HOURS"]):
+            log.info("[radiosondy] Radiosonde-lijst verouderd — nieuwe download gestart.")
+            payload = radiosondy.update_sonde_list(settings)
+            set_last_update(payload["generated"], payload["count"])
+        else:
+            # laad meta uit bestaande file
+            import json, os
+            from .config import SONDES_FILE
+            if os.path.exists(SONDES_FILE):
+                with open(SONDES_FILE,"r") as f:
+                    p = json.load(f)
+                    set_last_update(p.get("generated",0), p.get("count",0))
     except Exception as e:
-        logger.error(f"Fout bij laden van instellingen: {e}")
-        return
+        log.warning("Fout bij laden of bijwerken van radiosonde-lijst: %s", e)
 
-    # === 2. Radiosonde-lijst laden of bijwerken ===
-    try:
-        sondes = radiosondy.update_sondes(settings)
-        logger.info(f"{len(sondes)} sondes geladen uit /app/src/data/sondes.json")
-    except Exception as e:
-        logger.error(f"Fout bij laden of bijwerken van radiosonde-lijst: {e}")
+    # Threads
+    threading.Thread(target=gps.start_gps_listener, args=(settings["GPS_PORT"],), daemon=True).start()
+    threading.Thread(target=proximity.proximity_loop, args=(settings,), daemon=True).start()
+    threading.Thread(target=buzzer.buzzer_loop, args=(settings,), daemon=True).start()
+    threading.Thread(target=webserver.serve, args=(settings["BIND_HOST"], settings["BIND_PORT"]), daemon=True).start()
 
-    # === 3. GPS-thread starten ===
-    try:
-        threading.Thread(
-            target=gps.start_gps_thread, args=(settings,), daemon=True
-        ).start()
-        logger.info("GPS-thread gestart.")
-    except Exception as e:
-        logger.error(f"Kon GPS-thread niet starten: {e}")
-
-    # === 4. Proximity-thread starten ===
-    try:
-        threading.Thread(
-            target=proximity.start_proximity_loop, args=(settings,), daemon=True
-        ).start()
-        logger.info("Proximity-thread gestart.")
-    except Exception as e:
-        logger.error(f"Kon proximity-thread niet starten: {e}")
-
-    # === 5. Webserver starten ===
-    try:
-        webserver.start_server(settings)
-        logger.info("Webserver gestart op http://0.0.0.0:8080/")
-    except Exception as e:
-        logger.error(f"Webserver-fout: {e}", exc_info=True)
-
-    # === 6. Updater-thread voor sondelijst (periodiek) ===
-    def updater_loop():
+    # Periodieke auto-update (1x per uur check)
+    def updater():
         while True:
+            time.sleep(3600)
             try:
-                sondes = radiosondy.update_sondes(settings)
-                logger.info(f"Updater: {len(sondes)} sondes geladen / vernieuwd.")
+                if radiosondy.is_outdated(settings["UPDATE_HOURS"]):
+                    payload = radiosondy.update_sonde_list(load_settings())
+                    set_last_update(payload["generated"], payload["count"])
             except Exception as e:
-                logger.error(f"Updater-fout: {e}")
-            time.sleep(float(settings.get("UPDATE_HOURS", 24)) * 3600)
+                log.warning("Updater-fout: %s", e)
 
-    threading.Thread(target=updater_loop, daemon=True).start()
+    threading.Thread(target=updater, daemon=True).start()
 
-    # === Hoofdloop actief houden ===
     while True:
         time.sleep(1)
-
 
 if __name__ == "__main__":
     main()

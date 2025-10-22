@@ -1,69 +1,53 @@
-import json
-import math
-import time
-import logging
-from . import gps
+# /app/src/sondealert/proximity.py
+import json, math, time, logging, os
+from .config import SONDES_FILE
+from .state import get_gps, set_nearest
 
-logger = logging.getLogger("proximity")
-
+def _deg2rad(d): return d*math.pi/180.0
 def haversine(lat1, lon1, lat2, lon2):
-    R = 6371000.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a = math.sin(dlat/2)**2 + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.sin(dlon/2)**2
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a))
+    R=6371000.0
+    dLat=_deg2rad(lat2-lat1); dLon=_deg2rad(lon2-lon1)
+    a=math.sin(dLat/2)**2+math.cos(_deg2rad(lat1))*math.cos(_deg2rad(lat2))*math.sin(dLon/2)**2
+    return R*2*math.atan2(math.sqrt(a), math.sqrt(1-a))
 
-def start_proximity_loop(settings):
-    """Bereken telkens de dichtstbijzijnde sonde binnen de ingestelde afstand."""
-    logger.info(f"Afstandsbepaling gestart (radius {settings['NEAR_THRESHOLD_M']/1000:.1f} km)")
+def load_sondes():
+    if not os.path.exists(SONDES_FILE): return {"generated":0,"count":0,"items":[]}
+    with open(SONDES_FILE,"r") as f:
+        return json.load(f)
 
-    SONDES_FILE = "/app/data/sondes.json"
-    NEAREST_FILE = "/app/data/nearest.json"
+def compute_nearest(settings):
+    gps = get_gps()
+    if not gps.get("fix"): 
+        set_nearest(None, None, None); 
+        return
 
+    data = load_sondes()
+    items = data.get("items", [])
+    if not items:
+        set_nearest(None, None, None); 
+        return
+
+    glat, glon = gps["lat"], gps["lon"]
+    best, best_d = None, None
+    for it in items:
+        d = haversine(glat, glon, it["lat"], it["lon"])
+        if best_d is None or d < best_d:
+            best, best_d = it, d
+
+    # ring-level per 2 km
+    thr = float(settings["NEAR_THRESHOLD_M"])
+    if best_d is None or best_d > thr:
+        set_nearest(None, None, None); 
+        return
+
+    ring = max(1, int((thr - best_d) // 2000) + 1)  # 2km ringen, dichterbij = hogere ring
+    set_nearest(best, best_d, ring)
+
+def proximity_loop(settings):
+    logging.info("[proximity] Afstandsbepaling gestart (radius %.1f km)", float(settings["NEAR_THRESHOLD_M"])/1000.0)
     while True:
         try:
-            # GPS ophalen
-            gps_data = gps.get_last_position()
-            if not gps_data or not gps_data.get("fix"):
-                time.sleep(5)
-                continue
-
-            lat = gps_data["lat"]
-            lon = gps_data["lon"]
-
-            # Sondes laden
-            with open(SONDES_FILE, "r") as f:
-                data = json.load(f)
-
-            sondes = data.get("items", [])
-            if not sondes:
-                time.sleep(5)
-                continue
-
-            # Bereken dichtstbijzijnde sonde
-            nearest = None
-            nearest_dist = float("inf")
-
-            for s in sondes:
-                try:
-                    d = haversine(lat, lon, float(s["lat"]), float(s["lon"]))
-                    if d < nearest_dist:
-                        nearest, nearest_dist = s, d
-                except Exception as e:
-                    logger.warning(f"Fout bij berekenen afstand voor sonde: {e}")
-
-            # Filter op ingestelde radius
-            if nearest and nearest_dist <= settings["NEAR_THRESHOLD_M"]:
-                nearest["distance"] = nearest_dist
-                nearest_list = [nearest]
-            else:
-                nearest_list = []
-
-            with open(NEAREST_FILE, "w") as f:
-                json.dump(nearest_list, f, indent=2)
-
-            time.sleep(5)
-
+            compute_nearest(settings)
         except Exception as e:
-            logger.error(f"Fout in proximity-loop: {e}")
-            time.sleep(5)
+            logging.warning("[proximity] Fout: %s", e)
+        time.sleep(1)

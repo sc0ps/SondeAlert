@@ -1,110 +1,99 @@
-import json
-import os
-import logging
+# /app/src/sondealert/webserver.py
+import os, json, logging, threading, time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
-from . import gps, config
+from urllib.parse import parse_qs
+from .config import load_settings, save_settings, SETTINGS_FILE, SONDES_FILE
+from .state import get_gps, get_nearest, get_meta
+from . import radiosondy
 
-logger = logging.getLogger("web")
+BASE_WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 
-WEB_DIR = "/app/src/sondealert/web"
-DATA_DIR = "/app/data"
+def _read_body(handler):
+    ln = int(handler.headers.get("Content-Length", "0"))
+    return handler.rfile.read(ln) if ln>0 else b""
 
-class WebHandler(SimpleHTTPRequestHandler):
-    def log_message(self, *args):
-        return  # Geen standaard logging naar stderr
+class Handler(SimpleHTTPRequestHandler):
+    def translate_path(self, path):
+        # serve files from /web
+        if path == "/": path = "/index.html"
+        return os.path.join(BASE_WEB, path.lstrip("/"))
+
+    def log_message(self, *a): pass
+
+    def _ok_json(self, obj):
+        data = json.dumps(obj).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def _ok_text(self, text="OK"):
+        data = text.encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_GET(self):
-        path = urlparse(self.path).path
-        try:
-            # === GPS-data ===
-            if path == "/gps.json":
-                gps_data = gps.get_last_position()
-                self._send_json(gps_data or {})
-                return
-
-            # === Nearest sonde ===
-            elif path == "/nearest.json":
-                self._serve_data_file("nearest.json", default="[]")
-                return
-
-            # === Alle sondes (nieuw) ===
-            elif path == "/sondes.json":
-                self._serve_data_file("sondes.json", default='{"items":[]}')
-                return
-
-            # === Settings JSON ===
-            elif path == "/settings.json":
-                settings = config.load_settings()
-                self._send_json(settings)
-                return
-
-            # === HTML pagina’s ===
-            elif path in ("/", "/index.html"):
-                return self._serve_html("index.html")
-            elif path == "/settings.html":
-                return self._serve_html("settings.html")
-
-            # === Onbekend pad ===
+        if self.path == "/gps.json":
+            self._ok_json(get_gps()); return
+        if self.path == "/nearest.json":
+            self._ok_json(get_nearest()); return
+        if self.path == "/settings.json":
+            self._ok_json(load_settings() | get_meta()); return
+        if self.path == "/sondes.json":
+            if os.path.exists(SONDES_FILE):
+                with open(SONDES_FILE,"r") as f:
+                    data = json.load(f)
             else:
-                self.send_error(404, "File not found")
-
-        except Exception as e:
-            logger.error(f"Webserver GET-fout: {e}", exc_info=True)
-            self.send_error(500, "Internal server error")
-
-    def _serve_data_file(self, filename, default="{}"):
-        """Serve JSON-bestanden vanuit /app/data."""
-        path = os.path.join(DATA_DIR, filename)
-        if os.path.exists(path):
-            with open(path, "r") as f:
-                data = f.read()
-        else:
-            data = default
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(data.encode())
-
-    def _serve_html(self, filename):
-        """Serve webpagina’s vanuit /app/src/sondealert/web."""
-        path = os.path.join(WEB_DIR, filename)
-        if not os.path.exists(path):
-            self.send_error(404, "File not found")
-            return
-        with open(path, "rb") as f:
-            content = f.read()
-        self.send_response(200)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.end_headers()
-        self.wfile.write(content)
-
-    def _send_json(self, data):
-        encoded = json.dumps(data, indent=2).encode()
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(encoded)
+                data = {"generated":0,"count":0,"items":[]}
+            # voeg meta toe
+            data["last_update"] = get_meta()["last_update"]
+            self._ok_json(data); return
+        return super().do_GET()
 
     def do_POST(self):
-        path = urlparse(self.path).path
-        try:
-            if path == "/save_settings":
-                length = int(self.headers.get("Content-Length", 0))
-                raw = self.rfile.read(length)
-                settings = json.loads(raw.decode())
-                config.save_settings(settings)
-                self._send_json({"status": "ok"})
-            else:
-                self.send_error(404, "Not found")
-        except Exception as e:
-            logger.error(f"POST-fout: {e}", exc_info=True)
-            self.send_error(500, "Internal server error")
+        if self.path == "/save_settings":
+            body = _read_body(self).decode()
+            try:
+                s = load_settings()
+                j = json.loads(body)
+                for k in ("NEAR_THRESHOLD_M","ALT_MAX_M","UPDATE_HOURS"):
+                    if k in j:
+                        s[k] = int(j[k])
+                if "BUZZER_ENABLED" in j:
+                    s["BUZZER_ENABLED"] = bool(j["BUZZER_ENABLED"])
+                if "MONTHS_BACK" in j:
+                    s["MONTHS_BACK"] = int(j["MONTHS_BACK"])
+                if "STATUS_KEEP" in j:
+                    s["STATUS_KEEP"] = [x.strip().upper() for x in j["STATUS_KEEP"]]
+                if "LAUNCH_FILTERS" in j:
+                    s["LAUNCH_FILTERS"] = [x.strip() for x in j["LAUNCH_FILTERS"]]
+                save_settings(s)
+                self._ok_text("saved")
+            except Exception as e:
+                logging.warning("save_settings error: %s", e)
+                self.send_error(400, "bad request")
+            return
 
+        if self.path == "/update_now":
+            # run download in background thread; maar antwoord meteen
+            def _run():
+                try:
+                    payload = radiosondy.update_sonde_list(load_settings())
+                    from .state import set_last_update
+                    set_last_update(payload["generated"], payload["count"])
+                except Exception as e:
+                    logging.error("[update_now] fout: %s", e)
+            threading.Thread(target=_run, daemon=True).start()
+            self._ok_text("updating")
+            return
 
-def start_server(settings):
-    host = settings.get("BIND_HOST", "0.0.0.0")
-    port = int(settings.get("BIND_PORT", 8080))
-    server = ThreadingHTTPServer((host, port), WebHandler)
-    logger.info(f"Webserver gestart op http://{host}:{port}/")
-    server.serve_forever()
+        self.send_error(404, "not found")
+
+def serve(bind_host, bind_port):
+    httpd = ThreadingHTTPServer((bind_host, int(bind_port)), Handler)
+    logging.info("[web] Webserver gestart op http://%s:%s/", bind_host, bind_port)
+    httpd.serve_forever()
