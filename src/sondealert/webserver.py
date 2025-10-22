@@ -6,7 +6,7 @@ from .config import load_settings, save_settings, SETTINGS_FILE, SONDES_FILE
 from .state import get_gps, get_nearest, get_meta
 from . import radiosondy
 
-BASE_WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
+BASE_WEB = os.path.join(os.path.dirname(__file__), "web")
 
 def _read_body(handler):
     ln = int(handler.headers.get("Content-Length", "0"))
