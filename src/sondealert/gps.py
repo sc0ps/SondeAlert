@@ -1,40 +1,86 @@
 import socket
 import threading
 import logging
-import json
+import re
 
 logger = logging.getLogger("gps")
-latest_gps = {"lat": None, "lon": None, "fix": False}
 
-def parse_nmea(data):
+# Globale GPS-status
+last_position = {
+    "lat": None,
+    "lon": None,
+    "fix": False
+}
+
+def parse_nmea_latlon(lat_str, ns, lon_str, ew):
+    """Converteer NMEA latitude/longitude naar decimale graden."""
     try:
-        parts = data.split(',')
-        if parts[0].endswith("RMC") and parts[2] == "A":  # valid fix
-            lat = float(parts[3][:2]) + float(parts[3][2:]) / 60
-            if parts[4] == 'S': lat = -lat
-            lon = float(parts[5][:3]) + float(parts[5][3:]) / 60
-            if parts[6] == 'W': lon = -lon
-            return lat, lon, True
-        return None, None, False
+        lat_deg = float(lat_str[:2])
+        lat_min = float(lat_str[2:])
+        lon_deg = float(lon_str[:3])
+        lon_min = float(lon_str[3:])
+        lat = lat_deg + lat_min / 60.0
+        lon = lon_deg + lon_min / 60.0
+        if ns == "S":
+            lat = -lat
+        if ew == "W":
+            lon = -lon
+        return lat, lon
     except Exception:
-        return None, None, False
+        return None, None
 
-def gps_listener(port=5050):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("", port))
-    logger.info("Listening on UDP port %d for GPS data", port)
-    while True:
-        data, _ = sock.recvfrom(1024)
-        msg = data.decode(errors='ignore').strip()
-        lat, lon, fix = parse_nmea(msg)
-        if lat and lon:
-            latest_gps.update({"lat": lat, "lon": lon, "fix": fix})
-            logger.info("Received GPS position: %.5f, %.5f (fix=%s)", lat, lon, fix)
 
-def start_gps_listener(port=5050):
-    t = threading.Thread(target=gps_listener, args=(port,), daemon=True)
-    t.start()
+def process_nmea_sentence(data):
+    """Verwerk één NMEA-zin en update de laatste GPS-positie."""
+    global last_position
+
+    # Match GGA of RMC
+    if data.startswith(("$GNGGA", "$GPGGA")):
+        parts = data.split(",")
+        if len(parts) > 5 and parts[2] and parts[4]:
+            lat, lon = parse_nmea_latlon(parts[2], parts[3], parts[4], parts[5])
+            if lat and lon:
+                last_position["lat"] = lat
+                last_position["lon"] = lon
+                last_position["fix"] = parts[6] not in ("0", "")
+                logger.info(f"Received GPS position: {lat:.5f}, {lon:.5f} (fix={last_position['fix']})")
+
+    elif data.startswith(("$GNRMC", "$GPRMC")):
+        parts = data.split(",")
+        if len(parts) > 6 and parts[3] and parts[5]:
+            lat, lon = parse_nmea_latlon(parts[3], parts[4], parts[5], parts[6])
+            if lat and lon:
+                last_position["lat"] = lat
+                last_position["lon"] = lon
+                last_position["fix"] = parts[2] == "A"
+                logger.info(f"Received GPS position (RMC): {lat:.5f}, {lon:.5f}")
+
+
+def start_gps_thread(settings):
+    """Start een achtergrondthread die luistert op UDP 5050."""
+    port = settings.get("GPS_PORT", 5050)
+    thread = threading.Thread(target=gps_listener, args=(port,), daemon=True)
+    thread.start()
     logger.info("GPS thread started.")
 
+
+def gps_listener(port):
+    """Luister op de ingestelde UDP-poort naar NMEA-data."""
+    global last_position
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind(("0.0.0.0", port))
+    logger.info(f"Listening on UDP port {port} for GPS data")
+
+    while True:
+        try:
+            data, addr = sock.recvfrom(1024)
+            line = data.decode(errors="ignore").strip()
+            logger.debug(f"Received raw GPS data from {addr}: {line}")
+            process_nmea_sentence(line)
+        except Exception as e:
+            logger.warning(f"Error in GPS listener: {e}")
+
+
 def get_last_position():
-    return latest_gps
+    """Geef de laatst bekende GPS-positie."""
+    return last_position
