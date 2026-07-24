@@ -1,0 +1,121 @@
+name: 🐞 Bug Report
+description: Report a bug or unexpected behaviour in SondeAlert
+title: "[Bug]: "
+labels:
+  - bug
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thanks for reporting a bug!
+
+        Please complete this form as accurately as possible.
+        The more information you provide, the easier it is to reproduce and fix the issue.
+
+  - type: input
+    id: app-version
+    attributes:
+      label: SondeAlert Version
+      description: Which version of SondeAlert are you using?
+      placeholder: e.g. 1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android Version
+      placeholder: e.g. Android 16
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device Model
+      placeholder: e.g. Samsung Galaxy S25 Ultra
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-source
+    attributes:
+      label: Installation Source
+      options:
+        - Google Play
+        - APK
+        - Beta Testing
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Which part of SondeAlert is affected?
+      options:
+        - Map
+        - Detection
+        - Database
+        - Background Detection
+        - Drive Mode
+        - Notifications
+        - Settings
+        - Download / Update
+        - User Interface
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: What happened?
+      placeholder: Describe the issue in as much detail as possible.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      value: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behaviour
+      placeholder: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behaviour
+      placeholder: What actually happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Additional Information
+      description: Logs, screenshots or anything else that may help.
+      placeholder: Drag screenshots into this field if applicable.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for existing issues before creating this report.
+          required: true
+        - label: I am using the latest available version of SondeAlert.
+          required: true

@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+
+title: SondeAlert
+
+message: "If you reference SondeAlert, please cite this repository."
+
+type: software
+
+authors:
+  - name: Sc0ps Owl Designs
+
+repository-code: https://github.com/sc0ps/SondeAlert
+
+license: Proprietary
+
+abstract: >
+  SondeAlert is an Android application designed to help locate
+  and recover previously landed radiosondes.

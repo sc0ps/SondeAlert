@@ -1,0 +1,10 @@
+blank_issues_enabled: false
+
+contact_links:
+  - name: 📖 Documentation
+    url: https://github.com/sc0ps/SondeAlert
+    about: Read the project documentation, roadmap and FAQ before opening an issue.
+
+  - name: 💬 Community Discussions
+    url: https://github.com/sc0ps/SondeAlert/discussions
+    about: Ask questions, share ideas or discuss SondeAlert with the community.

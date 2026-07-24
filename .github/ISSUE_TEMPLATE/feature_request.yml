@@ -1,0 +1,70 @@
+name: 💡 Feature Request
+description: Suggest a new feature or improvement
+title: "[Feature]: "
+labels:
+  - enhancement
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Have an idea?
+
+        We'd love to hear your suggestions for improving SondeAlert.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Feature Title
+      placeholder: Short summary of your idea
+    validations:
+      required: true
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category
+      options:
+        - Map
+        - Detection
+        - Database
+        - Drive Mode
+        - Navigation
+        - User Interface
+        - Settings
+        - Performance
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Describe your proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternative solutions you've considered
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional Information
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched for existing feature requests.
+          required: true
