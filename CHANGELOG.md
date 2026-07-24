@@ -14,9 +14,11 @@ All notable changes to SondeAlert are documented here.
 
 ---
 
-## Version 1.0.0
+## Planned
 
-Initial public release.
+### Version 1.0.0
+
+- First public Android release
 
 ### Added
 
