@@ -16,6 +16,12 @@ The app downloads radiosonde data for a selected area and stores it locally on y
 
 Unlike live tracking applications, SondeAlert focuses entirely on radiosonde recovery and field use.
 
+**Note**
+
+This repository contains public documentation, screenshots and community resources only.
+
+The SondeAlert application source code is maintained in a private repository.
+
 ---
 
 ## Features
@@ -29,6 +35,7 @@ Unlike live tracking applications, SondeAlert focuses entirely on radiosonde rec
 - 🔎 Radius-based filtering
 - 🌙 Modern dark interface
 - 🔗 Direct integration with Radiosondy.info
+
 ---
 
 ## Screenshots
