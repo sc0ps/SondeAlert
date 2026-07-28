@@ -1,126 +1,251 @@
 # SondeAlert Privacy Policy
 
-_Last updated: 24 July 2026_
+_Last updated: 28 July 2026_
 
-## 1. Purpose of the app
+## 1. About this policy
 
-SondeAlert helps users recover previously landed radiosondes.
+This Privacy Policy explains how the Android application **SondeAlert** accesses, uses, stores and shares information.
 
-SondeAlert is an independent application and is not intended as a replacement for a live radiosonde tracking service.
+SondeAlert is developed by **Scops Owl Designs**.
 
-## 2. Location data
+For privacy questions, contact:
 
-When you enable detection, SondeAlert uses your precise location to:
+[scopsowldesigns@gmail.com](mailto:scopsowldesigns@gmail.com)
 
-- Display your current position on the map.
-- Calculate distances to downloaded radiosondes.
-- Determine the nearest radiosonde.
-- Provide alerts within the configured alert radius.
-- Follow your position while travelling.
+## 2. Purpose of SondeAlert
 
-Location detection may remain active when you press Home or temporarily use another application. Android displays an ongoing notification while background detection is active.
+SondeAlert helps users locate and recover radiosondes that have previously landed.
 
-Detection stops when you remove SondeAlert from the recent-apps screen or select **Stop detection** in the ongoing notification.
+The application downloads radiosonde records, stores them locally and compares their last known positions with the device's current location.
 
-## 3. Data sent to Radiosondy.info
+SondeAlert is an independent application. It is not a live radiosonde tracking service and is not an official application of Radiosondy.info, MapLibre, OpenStreetMap or any map provider.
+
+## 3. Location information
+
+With your permission, SondeAlert accesses the device's precise or approximate location.
+
+Location is used to:
+
+- Display your current position on the map;
+- Position the configured detection rings;
+- Calculate distances to radiosondes;
+- Determine the nearest eligible radiosonde;
+- Produce optional detection audio and notifications;
+- Request radiosonde records for the surrounding region;
+- Support Drive Mode; and
+- Support user-initiated background detection.
+
+Your exact GPS position is processed locally on your device.
+
+SondeAlert does not create or upload a history of your movements.
+
+## 4. Background detection
+
+When radiosonde detection is active, SondeAlert can continue processing location updates while you press the Home button or temporarily use another application.
+
+Android displays an ongoing foreground-service notification while this service is active.
+
+This ongoing Android notification is separate from optional radiosonde detection notifications. Disabling radiosonde detection notifications does not disable the notification Android requires while active location detection is running.
+
+Detection stops when you stop detection, use the stop action in the notification or remove the SondeAlert task from the recent-apps screen.
+
+Android or manufacturer-specific battery management may also stop or restrict background activity.
+
+## 5. Data sent to Radiosondy.info
 
 SondeAlert does not send your exact GPS coordinates to Radiosondy.info.
 
-To download relevant radiosonde data, your coordinates are rounded to increments of approximately 0.5 degrees. Radiosondy.info may receive:
+Before requesting radiosonde records, the selected location coordinates are rounded to increments of 0.5 degrees. Radiosondy.info therefore receives a regional, approximate location instead of the device's exact GPS position.
 
-- This approximate location.
-- The selected radiosonde search parameters.
-- Standard technical connection information required to process the API request, such as an IP address and application User-Agent.
+A request may also contain functional dataset parameters such as:
 
-Radiosonde data is provided by Radiosondy.info with permission.
+- The regional search coordinate;
+- The requested radius;
+- The requested date period;
+- Selected radiosonde statuses; and
+- The maximum altitude.
 
-## 4. Map providers
+Like other internet services, Radiosondy.info may receive standard technical connection information, including the device's public IP address, request time and information required to return the requested data.
 
-SondeAlert uses MapLibre to display maps.
+Radiosonde data is provided by Radiosondy.info with permission. Radiosondy.info is not responsible for the operation or use of SondeAlert.
 
-Depending on the selected map layer, map tiles may be requested from services including:
+## 6. Map providers
 
-- OpenStreetMap
-- OpenFreeMap
-- CARTO
-- Esri
+SondeAlert uses MapLibre to display its interactive map.
 
-These providers receive requests for the map area being viewed and may process standard technical connection information, such as an IP address, under their own terms and privacy policies.
+Depending on the selected map style, map tiles or resources may be requested from services including:
 
-## 5. Local data storage
+- OpenStreetMap-based services;
+- OpenFreeMap;
+- CARTO; or
+- Esri.
 
-SondeAlert stores the following information locally in the app’s private storage on your device:
+A map provider receives the map area and zoom level required to return the requested map tiles.
 
-- Application settings.
-- Downloaded radiosonde information.
-- Information about downloaded dataset areas.
-- The date and parameters of the most recent database update.
+If the map is centred on your current location, the requested map area can provide an approximate indication of where the device is located.
 
-SondeAlert does not maintain or upload a history of your movements.
+Map providers may also receive standard technical connection information, such as the public IP address and request time. Their own privacy policies govern how they process this information.
 
-Application data is excluded from Android cloud backups and device-to-device transfers.
+## 7. Information stored locally
 
-## 6. Data retention and deletion
+SondeAlert stores application information in the app's private storage on your device.
 
-Locally stored data remains on your device until you:
+Locally stored information can include:
 
-- Clear the local radiosonde database from within SondeAlert.
-- Clear SondeAlert’s application data through Android.
-- Uninstall SondeAlert.
+- Application settings;
+- Detection radius and detection-ring settings;
+- Audio and notification preferences;
+- Theme and map preferences;
+- Map-filter selections;
+- Selected Full or Lite dataset;
+- Automatic-update settings;
+- Favourite radiosonde IDs;
+- Blocked radiosonde IDs;
+- Downloaded radiosonde records;
+- Downloaded dataset areas;
+- Database update times; and
+- Database counters and summary information.
 
-SondeAlert does not provide user accounts and does not store personal information on a SondeAlert-operated server.
+This information is not uploaded to a SondeAlert-operated server.
 
-## 7. Notifications and audio alerts
+Application data is excluded from Android cloud backups and device-to-device data transfers.
 
-When enabled, SondeAlert may display notifications and play audio signals when a downloaded radiosonde enters the configured alert range.
+## 8. Information not received by the developer
 
-Notifications and audio alerts are processed locally on your device.
+SondeAlert does not provide Scops Owl Designs with:
 
-## 8. Advertising, sales and sharing
+- Your exact GPS position;
+- A history of your movements;
+- Your name, address or telephone number;
+- Your contacts, photographs or files;
+- Payment information;
+- Advertising identifiers;
+- Favourite radiosonde lists;
+- Blocked radiosonde lists; or
+- The contents of your local radiosonde database.
+
+SondeAlert does not provide user accounts and does not operate a developer server to which location or application-usage information is uploaded.
+
+## 9. Notifications and audio
+
+When enabled, SondeAlert may display notifications or play an audio pattern when an eligible radiosonde enters a configured detection ring.
+
+Detection calculations, audio decisions and optional detection notifications are processed locally on your device.
+
+Audio alerts and radiosonde detection notifications can be controlled separately.
+
+These settings do not disable the ongoing Android notification required while the foreground location service is active.
+
+## 10. Analytics, advertising and sale of information
 
 SondeAlert:
 
-- Does not display advertising.
-- Does not sell personal information.
-- Does not use personal information for marketing.
-- Does not intentionally collect personal information.
-- Does not share exact location information with Radiosondy.info.
+- Does not display third-party advertising;
+- Does not use location information for advertising or marketing;
+- Does not sell or rent personal information; and
+- Does not currently include a third-party analytics or crash-reporting SDK.
 
-Technical information may still be processed by Radiosondy.info and the selected map provider when the app requests data or map tiles.
+Google Play and Android may independently process installation, stability and diagnostic information under Google's own terms and privacy policy.
 
-## 9. Security and consent
+Scops Owl Designs may receive aggregated or de-identified diagnostic information through Google Play Console.
 
-Network connections to the listed data and map providers use HTTPS.
+## 11. Android permissions
 
-Location detection is enabled only after you:
+SondeAlert can request the following Android permissions:
 
-1. View the location and privacy disclosure.
-2. Choose to enable detection.
-3. Grant Android location permission.
+### Precise and approximate location
 
-Android permissions can be changed at any time through your device settings.
+Used for map positioning, distance calculations and radiosonde detection.
 
-## 10. Data source and independence
+### Notifications
 
-SondeAlert uses radiosonde data provided by Radiosondy.info with permission.
+Used for the ongoing detection-service notification and optional radiosonde detection notifications.
 
-SondeAlert is independently developed and operated. Radiosondy.info is not responsible for the operation, availability or use of SondeAlert.
+### Foreground location service
 
-## 11. Children
+Used to continue user-initiated radiosonde detection when the application is not visible.
 
-SondeAlert is not specifically designed for children and does not intentionally collect personal information from children.
+### Internet access
 
-## 12. Changes to this policy
+Used to download radiosonde data, retrieve map resources and open external information.
 
-This Privacy Policy may be updated when SondeAlert’s features or data-handling practices change.
+### Vibration
 
-The revision date at the top of this page will be updated when changes are made.
+May be used by Android notifications where enabled and supported.
 
-## 13. Contact
+You can manage location and notification permissions through Android Settings.
 
-For privacy questions or requests, contact:
+Refusing or revoking a permission can prevent the related feature from working, but does not prevent access to unrelated parts of the application.
 
-**ScopsOwl Designs**  
+## 12. Data retention and deletion
+
+Locally stored data remains on your device until it is removed.
+
+You can delete locally stored information by:
+
+- Clearing the downloaded radiosonde database inside SondeAlert;
+- Removing individual favourites;
+- Removing individual blocked radiosondes;
+- Clearing the complete Sonde blocklist;
+- Clearing SondeAlert's application data through Android Settings; or
+- Uninstalling SondeAlert.
+
+Because SondeAlert has no user accounts and does not upload this information to a developer server, there is no separate online account or server-side profile to delete.
+
+## 13. Data security
+
+SondeAlert stores local information in Android's private application storage.
+
+Network requests made by SondeAlert use encrypted HTTPS connections. Cleartext network traffic is disabled in the Android application configuration.
+
+No method of electronic storage or network transmission can be guaranteed to be completely secure.
+
+Users should keep Android and SondeAlert updated and protect their device with an appropriate screen lock.
+
+## 14. User choice and consent
+
+Location-based detection starts only after:
+
+1. The location and privacy disclosure has been presented;
+2. The user chooses to enable detection; and
+3. The required Android location permission has been granted.
+
+You can at any time:
+
+- Disable detection audio;
+- Disable optional radiosonde detection notifications;
+- Stop active detection;
+- Revoke Android location permission;
+- Revoke Android notification permission; or
+- Delete locally stored application data.
+
+## 15. External websites
+
+SondeAlert can open external websites, including individual radiosonde-information pages on Radiosondy.info.
+
+Once an external website is opened, the website's own terms and privacy policy apply.
+
+SondeAlert is not responsible for the privacy practices or content of third-party websites.
+
+## 16. Children
+
+SondeAlert is not specifically directed at children and does not knowingly collect personal information from children through a developer-operated account or server.
+
+Radiosonde recovery should be performed safely and, where appropriate, under adult supervision.
+
+## 17. Changes to this policy
+
+This Privacy Policy may be updated when SondeAlert's features, permissions, external services or data-handling practices change.
+
+The latest version will be published on this page. The revision date at the top identifies the most recent update.
+
+Material changes may also be communicated through the application, Google Play release information or the SondeAlert testing channel.
+
+## 18. Contact
+
+For privacy questions, requests or concerns, contact:
+
+**Scops Owl Designs**  
 Email: [scopsowldesigns@gmail.com](mailto:scopsowldesigns@gmail.com)
 
 Project information: [github.com/sc0ps/SondeAlert](https://github.com/sc0ps/SondeAlert)
