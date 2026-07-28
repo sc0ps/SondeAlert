@@ -118,7 +118,7 @@ Radiosondes placed on the Sonde blocklist:
 ### Features and settings
 
 <p align="center">
-  <img src="screenshots/dark-menu.png" width="260" alt="SondeAlert menu in dark mode">
+  <img src="screenshots/dark-menu.png" width="220" alt="SondeAlert menu in dark mode">
   <img src="screenshots/dark-sonde-list.png" width="220" alt="SondeAlert radiosonde list">
   <img src="screenshots/dark-map-filters.png" width="220" alt="SondeAlert map filters">
   <img src="screenshots/dark-settings.png" width="220" alt="SondeAlert settings">
