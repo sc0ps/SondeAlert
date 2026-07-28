@@ -2,83 +2,192 @@
 
 > **Find • Locate • Recover**
 
-A modern Android application designed to help the radiosonde community locate and recover previously landed radiosondes.
+SondeAlert is an Android application designed to help the radiosonde community find and recover previously landed radiosondes.
 
-![Banner](assets/banner.png)
-
----
-
-## About
-
-SondeAlert is a modern Android application built specifically for radiosonde hunters.
-
-The app downloads radiosonde data for a selected area and stores it locally on your device. Using your current GPS location, SondeAlert helps you locate previously landed radiosondes through offline maps, intelligent distance alerts and powerful filtering options.
-
-Unlike live tracking applications, SondeAlert focuses entirely on radiosonde recovery and field use.
-
-> **Note**
-> 
-> This repository contains public documentation, screenshots and community resources only.
-> The SondeAlert application source code is maintained in a private repository.
+![SondeAlert banner](assets/banner.png)
 
 ---
 
-## Features
+## About SondeAlert
 
-- 📡 Offline radiosonde database
-- 🗺️ Interactive MapLibre maps
-- 📍 GPS-based sonde detection
-- 🚗 Drive Mode
-- 🔔 Intelligent distance alerts
-- 📥 Local database storage
-- 🔎 Radius-based filtering
-- 🌙 Modern dark interface
-- 🔗 Direct integration with Radiosondy.info
+SondeAlert downloads radiosonde records for the area around your selected location and stores them locally on your device.
+
+Using your current GPS position, the app calculates the distance to nearby radiosondes and can alert you when a sonde enters one of your configured detection rings.
+
+Unlike live tracking applications, SondeAlert focuses on locating and recovering radiosondes that have already landed.
+
+> **Development status**
+>
+> SondeAlert is currently available through a closed Google Play testing programme. Features and behaviour may still change based on feedback from testers.
+
+> **Source code**
+>
+> This repository contains public documentation, screenshots, release information and community resources. The SondeAlert application source code is maintained in a private repository.
+
+---
+
+## Main features
+
+### Map and location
+
+- Interactive MapLibre map
+- Current GPS location and detection rings
+- Distance to the nearest radiosonde
+- Tap a marker to view radiosonde details
+- Centre the map on a selected radiosonde
+- Open a radiosonde directly on Radiosondy.info
+- Drive Mode for use while travelling
+- Light and dark themes
+
+### Detection and alerts
+
+- Configurable detection radius
+- Multiple detection rings
+- A separate audio pattern for each detection ring
+- Optional radiosonde detection notifications
+- Audio and notifications can be controlled independently
+- Background detection while the app is active
+- Blocked radiosondes are excluded from detection
+
+### Radiosonde data
+
+- Local radiosonde database
+- Full dataset from 19 March 2017 through today
+- Lite dataset from 1 January 2022 through today
+- Manual database downloads and updates
+- Optional automatic updates
+- Optional Wi-Fi-only updates
+- Dataset and map statistics
+
+Both datasets are currently downloaded using:
+
+- A maximum radius of 600 km
+- `Unknown` and `Needs Attention` statuses
+- A maximum last known altitude of 2,000 metres
+
+### Map filters
+
+The displayed radiosondes can be filtered by:
+
+- Distance
+- Status
+- Sonde family or type
+- Start and end year
+- Last known altitude
+
+Filter changes are applied together after pressing **Apply filters**.
+
+### Sonde list
+
+- Up to 200 results are displayed at once
+- Search by radiosonde ID
+- View detailed radiosonde information
+- Show a selected radiosonde on the map
+- Add or remove radiosondes from favourites
+- Add radiosondes to the Sonde blocklist
+
+### Favourites and Sonde blocklist
+
+Favourite radiosondes are stored in a separate list and displayed with a star-shaped marker on the map.
+
+Radiosondes placed on the Sonde blocklist:
+
+- Are hidden from the map
+- Are excluded from nearest-sonde calculations
+- Are excluded from detection and alerts
+- Can be removed individually or all at once
 
 ---
 
 ## Screenshots
 
 <p align="center">
-<img src="screenshots/home.png" width="220">
-<img src="screenshots/settings.png" width="220">
-<img src="screenshots/data.png" width="220">
+  <img src="screenshots/home.png" width="220" alt="SondeAlert home screen">
+  <img src="screenshots/settings.png" width="220" alt="SondeAlert settings">
+  <img src="screenshots/data.png" width="220" alt="SondeAlert database settings">
 </p>
 
 <p align="center">
-<img src="screenshots/about.png" width="220">
-<img src="screenshots/drive-mode.png" width="220">
+  <img src="screenshots/about.png" width="220" alt="About SondeAlert">
+  <img src="screenshots/drive-mode.png" width="220" alt="SondeAlert Drive Mode">
 </p>
 
 ---
 
-## Availability
+## Data and map services
 
-SondeAlert is currently under active development.
+SondeAlert uses data and services provided by:
 
-The first public release will be available as a free download on Google Play.
+- [Radiosondy.info](https://radiosondy.info/)
+- [MapLibre](https://maplibre.org/)
+- [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
+
+The number of records received from the data service can differ from the number stored locally. Records outside the app's configured dataset area or selection rules are not stored. More information will be available on the Q&A page.
+
+SondeAlert is an independent application and is not an official Radiosondy.info, MapLibre or OpenStreetMap application.
+
+---
+
+## Privacy and location
+
+Your location is used to:
+
+- Display your position on the map
+- Calculate the nearest radiosonde
+- Calculate detection-ring distances
+- Request radiosonde data for the surrounding area
+
+For radiosonde database requests, SondeAlert rounds the request location to a regional coordinate. The exact GPS position is used locally for distance calculations.
+
+Map providers may receive information about the map area being viewed when map tiles are downloaded.
+
+---
+
+## Requirements
+
+- Android 8.0 or newer
+- Location permission for map positioning and detection
+- Notification permission on supported Android versions
+- Internet access for database updates, map tiles and external links
+
+Background behaviour can differ between Android devices because manufacturers may apply their own battery optimisation rules.
+
+---
+
+## Testing and feedback
+
+SondeAlert is currently being tested through Google Play closed testing.
+
+Testers are encouraged to report:
+
+- Crashes or unresponsive behaviour
+- Incorrect nearest-sonde calculations
+- Detection or audio-alert problems
+- Missing or incorrectly displayed radiosondes
+- Problems after restoring the app from the background
+- Device model and Android version
+
+Please do not publicly share personal location information when submitting a report.
 
 ---
 
 ## Documentation
 
-Additional information can be found here:
-
-- 📖 Roadmap
-- 📝 Changelog
-- 🤝 Contributing
-- 🔒 Security Policy
-- ⚖️ License
+- [Questions and answers](FAQ.md)
+- [Security policy](SECURITY.md)
+- [Google Play release information](play-store/)
+- [Privacy information](docs/)
 
 ---
 
 ## Credits
 
-Developed by **Sc0ps Owl Designs**
+Developed by **Sc0ps Owl Designs**.
 
-SondeAlert would not be possible without the following projects and communities:
+Special thanks to:
 
-- Radiosondy.info
+- Radiosondy.info and its contributors
 - MapLibre
-- OpenStreetMap Contributors
+- OpenStreetMap contributors
+- Everyone participating in the SondeAlert test programme
 - The worldwide radiosonde community
