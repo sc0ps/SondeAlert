@@ -122,7 +122,7 @@ SondeAlert uses data and services provided by:
 - [MapLibre](https://maplibre.org/)
 - [OpenStreetMap contributors](https://www.openstreetmap.org/copyright)
 
-The number of records received from the data service can differ from the number stored locally. Records outside the app's configured dataset area or selection rules are not stored. More information will be available on the Q&A page.
+The number of records received from the data service can differ from the number stored locally. Records outside the app's configured dataset area or selection rules are not stored. [Read more about these counters in the Questions and Answers.](FAQ.md)
 
 SondeAlert is an independent application and is not an official Radiosondy.info, MapLibre or OpenStreetMap application.
 
@@ -174,9 +174,10 @@ Please do not publicly share personal location information when submitting a rep
 ## Documentation
 
 - [Questions and answers](FAQ.md)
+- [Privacy policy](PRIVACY.md)
 - [Security policy](SECURITY.md)
-- [Google Play release information](play-store/)
-- [Privacy information](docs/)
+- [Latest updates](CHANGELOG.md)
+- [Support](SUPPORT.md)
 
 ---
 
