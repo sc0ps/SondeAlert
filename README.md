@@ -112,8 +112,8 @@ Radiosondes placed on the Sonde blocklist:
 
 <p align="center">
   <img src="screenshots/dark-home.png" width="260" alt="SondeAlert home screen in dark mode">
-  <img src="screenshots/dark-menu.png" width="260" alt="SondeAlert menu in dark mode">
   <img src="screenshots/dark-drive-mode.png" width="260" alt="SondeAlert Drive Mode">
+  <img src="screenshots/dark-menu.png" width="260" alt="SondeAlert menu in dark mode">
 </p>
 
 ### Features and settings
