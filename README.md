@@ -101,15 +101,28 @@ Radiosondes placed on the Sonde blocklist:
 
 ## Screenshots
 
-<p align="center">
-  <img src="screenshots/home.png" width="220" alt="SondeAlert home screen">
-  <img src="screenshots/settings.png" width="220" alt="SondeAlert settings">
-  <img src="screenshots/data.png" width="220" alt="SondeAlert database settings">
-</p>
+### Light mode
 
 <p align="center">
-  <img src="screenshots/about.png" width="220" alt="About SondeAlert">
-  <img src="screenshots/drive-mode.png" width="220" alt="SondeAlert Drive Mode">
+  <img src="screenshots/light-home.png" width="260" alt="SondeAlert home screen in light mode">
+  <img src="screenshots/light-menu.png" width="260" alt="SondeAlert menu in light mode">
+</p>
+
+### Dark mode
+
+<p align="center">
+  <img src="screenshots/dark-home.png" width="260" alt="SondeAlert home screen in dark mode">
+  <img src="screenshots/dark-menu.png" width="260" alt="SondeAlert menu in dark mode">
+  <img src="screenshots/dark-drive-mode.png" width="260" alt="SondeAlert Drive Mode">
+</p>
+
+### Features and settings
+
+<p align="center">
+  <img src="screenshots/dark-sonde-list.png" width="220" alt="SondeAlert radiosonde list">
+  <img src="screenshots/dark-map-filters.png" width="220" alt="SondeAlert map filters">
+  <img src="screenshots/dark-settings.png" width="220" alt="SondeAlert settings">
+  <img src="screenshots/dark-about.png" width="220" alt="About SondeAlert">
 </p>
 
 ---
