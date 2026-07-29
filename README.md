@@ -1,6 +1,6 @@
 # SondeAlert
 
-> **Find • Locate • Recover**
+> **Find • Locate • Recover** <p align="richt"> <a href="https://ko-fi.com/sondealert"> <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support SondeAlert on Ko-fi"> </a> </p>
 
 SondeAlert is an Android application designed to help the radiosonde community find and recover previously landed radiosondes.
 
@@ -190,6 +190,29 @@ Please do not publicly share personal location information when submitting a rep
 - [Security policy](SECURITY.md)
 - [Latest updates](CHANGELOG.md)
 - [Support](SUPPORT.md)
+
+---
+
+## Support SondeAlert for iOS
+
+SondeAlert is currently being developed and tested for Android. I would also like to make the app available to the radiosonde community on iPhone and other supported Apple devices.
+
+Developing and publishing an iOS version requires additional development work and an annual Apple Developer Program membership.
+
+If you would like to support the project, you can do so through Ko-fi.
+
+<p align="Left"> <a href="https://ko-fi.com/sondealert"> <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support SondeAlert on Ko-fi"> </a> </p>
+
+Your support helps cover:
+
+- Apple Developer Program membership
+- iOS development and testing
+- App Store publishing costs
+- Continued development and future updates
+
+SondeAlert will always remain free to download and use. Supporting the project is completely optional, but every contribution helps bring SondeAlert to more members of the radiosonde community.
+
+Thank you for supporting SondeAlert and helping make an iOS version possible.
 
 ---
 
